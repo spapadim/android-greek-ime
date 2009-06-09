@@ -1,0 +1,22 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" 
+        package="net.bitquill.inputmethod.greek" android:versionName="0.1" android:versionCode="2">
+    <uses-permission android:name="android.permission.VIBRATE"/>
+
+    <application android:label="@string/greek_ime_name" android:debuggable="false" android:icon="@drawable/icon">
+        <service android:name="GreekIME"
+                android:label="@string/greek_ime_name"
+                android:permission="android.permission.BIND_INPUT_METHOD" android:icon="@drawable/icon">
+            <intent-filter>
+                <action android:name="android.view.InputMethod" />
+            </intent-filter>
+            <meta-data android:name="android.view.im" android:resource="@xml/method" />
+        </service>
+        
+        <activity android:name="GreekIMESettings" android:label="@string/greek_ime_settings">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+            </intent-filter>
+        </activity>    
+    </application>
+<uses-sdk android:minSdkVersion="3"></uses-sdk>
+</manifest>
