@@ -77,13 +77,12 @@
     </Row>
     
     <Row android:keyboardMode="@+id/lang_en" android:rowEdgeFlags="bottom">
+        <Key android:codes="-102" android:keyLabel="@string/label_en_alpha_key" 
+                android:keyWidth="20%p" android:keyEdgeFlags="left"/>
         <Key android:codes="-2" android:keyIcon="@drawable/sym_keyboard_el" 
-                android:keyWidth="20%p"
                 android:popupKeyboard="@xml/kbd_popup_template"
                 android:popupCharacters=""
                 android:iconPreview="@drawable/sym_keyboard_feedback_el"
-                android:keyEdgeFlags="left"/>
-        <Key android:codes="-102" android:keyLabel="@string/label_en_alpha_key" 
                 android:keyWidth="15%p"/>
         <Key android:codes="32" android:keyIcon="@drawable/sym_keyboard_space" android:keyWidth="30%p" 
                 android:iconPreview="@drawable/sym_keyboard_feedback_space"
@@ -94,13 +93,12 @@
     </Row>
 
     <Row android:keyboardMode="@+id/lang_el" android:rowEdgeFlags="bottom">
+        <Key android:codes="-102" android:keyLabel="@string/label_el_alpha_key" 
+                android:keyWidth="20%p" android:keyEdgeFlags="left"/>
         <Key android:codes="-2" android:keyIcon="@drawable/sym_keyboard_gb" 
-                android:keyWidth="20%p"
                 android:popupKeyboard="@xml/kbd_popup_template"
                 android:popupCharacters=""
                 android:iconPreview="@drawable/sym_keyboard_feedback_gb"
-                android:keyEdgeFlags="left"/>
-        <Key android:codes="-102" android:keyLabel="@string/label_el_alpha_key" 
                 android:keyWidth="15%p"/>
         <Key android:codes="32" android:keyIcon="@drawable/sym_keyboard_space" android:keyWidth="30%p" 
                 android:iconPreview="@drawable/sym_keyboard_feedback_space"

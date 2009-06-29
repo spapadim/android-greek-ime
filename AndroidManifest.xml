@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" 
-        package="net.bitquill.inputmethod.greek" android:versionName="0.1" android:versionCode="2">
+        package="net.bitquill.inputmethod.greek" android:versionName="0.2" android:versionCode="3">
     <uses-permission android:name="android.permission.VIBRATE"/>
 
     <application android:label="@string/greek_ime_name" android:debuggable="false" android:icon="@drawable/icon">
