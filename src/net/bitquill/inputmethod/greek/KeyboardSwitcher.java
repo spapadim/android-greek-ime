@@ -59,12 +59,15 @@ public class KeyboardSwitcher {
     private SoftKeyboard[] mIMKeyboard = new SoftKeyboard[2];
     
     private static final int[] XML_RES_ID = new int[]{ R.xml.kbd_latin, R.xml.kbd_greek };
+    private static final int[] XML_7BIT_RES_ID = new int[]{ R.xml.kbd_latin, R.xml.kbd_greek_sms_7bit };
     private static final int[] XML_MODE_ID = new int[]{ R.id.lang_en, R.id.lang_el };
     private static final int[] ICON_RES_ID = new int[]{ R.drawable.ime_en, R.drawable.ime_el };
     
     private int mMode;
     private int mLanguage;
     private int mImeOptions;
+    
+    private boolean m7bitMode;
 
     KeyboardSwitcher(GreekIME context) {
         mContext = context;
@@ -141,7 +144,12 @@ public class KeyboardSwitcher {
                 break;
             case MODE_IM:
                 if (mIMKeyboard[mLanguage] == null) {
-                    mIMKeyboard[mLanguage] = new SoftKeyboard(mContext, XML_RES_ID[mLanguage], KEYBOARDMODE_IM);
+                	if (m7bitMode) {
+                	    mIMKeyboard[mLanguage] = new SoftKeyboard(mContext, XML_7BIT_RES_ID[mLanguage], KEYBOARDMODE_IM);
+                	} else {
+                	    mIMKeyboard[mLanguage] = new SoftKeyboard(mContext, XML_RES_ID[mLanguage], KEYBOARDMODE_IM);
+                		
+                	}
                     mIMKeyboard[mLanguage].enableShiftLock();
                 }
                 keyboard = mIMKeyboard[mLanguage];
@@ -161,6 +169,10 @@ public class KeyboardSwitcher {
     	return mLanguage;
     }
     
+    boolean get7bitMode() {
+    	return m7bitMode;
+    }
+    
     int getLanguageIcon () {
     	return ICON_RES_ID[mLanguage];
     }
@@ -178,6 +190,10 @@ public class KeyboardSwitcher {
             return true;
         }
         return false;
+    }
+    
+    void set7bitMode (boolean enabled) {
+    	m7bitMode = enabled;
     }
     
     void toggleSymbolShift() {

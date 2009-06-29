@@ -41,6 +41,7 @@ import android.text.ClipboardManager;
 import android.text.TextUtils;
 import android.util.PrintWriterPrinter;
 import android.util.Printer;
+import android.util.SparseIntArray;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.Window;
@@ -63,6 +64,7 @@ public class GreekIME extends InputMethodService
     private static final String PREF_VIBRATE_ON = "vibrate_on";
     private static final String PREF_SOUND_ON = "sound_on";
     private static final String PREF_AUTO_CAP = "auto_cap";
+    private static final String PREF_SMS_7BIT = "sms_7bit";
     
     // How many continuous deletes at which to start deleting at a higher speed.
     private static final int DELETE_ACCELERATE_AT = 20;
@@ -87,12 +89,14 @@ public class GreekIME extends InputMethodService
     private boolean mAutoSpace;
     private boolean mCapsLock;
     private boolean mVibrateOn;
+    private boolean mSMS7bitMode;
     private boolean mSoundOn;
     private boolean mAutoCap;
     // Indicates whether the suggestion strip is to be on in landscape
     private int mDeleteCount;
     private long mLastKeyTime;
     
+    private boolean mIMMode;
     private boolean mAccentShift;
     private boolean mCapsShift;
     
@@ -150,7 +154,11 @@ public class GreekIME extends InputMethodService
     @Override
 	public void onStartInput(EditorInfo attribute, boolean restarting) {
     	showStatusIcon(mKeyboardSwitcher.getLanguageIcon());
-		super.onStartInput(attribute, restarting);
+    	loadSettings();
+    	mIMMode = ((attribute.inputType & EditorInfo.TYPE_MASK_CLASS) == EditorInfo.TYPE_CLASS_TEXT)
+    		&& ((attribute.inputType & EditorInfo.TYPE_MASK_VARIATION) == EditorInfo.TYPE_TEXT_VARIATION_SHORT_MESSAGE);
+        if (TRACE) Debug.startMethodTracing("greekime");
+		//super.onStartInput(attribute, restarting);  // XXX - check
 	}
 
 	@Override 
@@ -161,11 +169,12 @@ public class GreekIME extends InputMethodService
         }
 
         mKeyboardSwitcher.makeKeyboards();
+        mKeyboardSwitcher.set7bitMode(mSMS7bitMode);
         
         TextEntryState.newSession(this);
         
         mCapsLock = false;
-        switch (attribute.inputType&EditorInfo.TYPE_MASK_CLASS) {
+        switch (attribute.inputType & EditorInfo.TYPE_MASK_CLASS) {
             case EditorInfo.TYPE_CLASS_NUMBER:
             case EditorInfo.TYPE_CLASS_DATETIME:
                 mKeyboardSwitcher.setSoftKeyboardState(KeyboardSwitcher.MODE_TEXT,
@@ -205,14 +214,11 @@ public class GreekIME extends InputMethodService
                 		KeyboardSwitcher.LANGUAGE_EN, attribute.imeOptions);
                 updateShiftKeyState(attribute);
         }
-        showStatusIcon(mKeyboardSwitcher.getLanguageIcon());
         mInputView.closing();
         mComposing.setLength(0);
         mDeleteCount = 0;
         setCandidatesViewShown(false);
-        loadSettings();
         mInputView.setProximityCorrectionEnabled(true);
-        if (TRACE) Debug.startMethodTracing("latinime");
     }
 
     @Override
@@ -445,36 +451,7 @@ public class GreekIME extends InputMethodService
      * @return      Corresponding accented character; returns code itself if character cannot be accented
      */
     private int addAccent (int code) {
-    	switch (code) {
-    	case 'α':
-    		return 'ά';
-    	case 'ε':
-    		return 'έ';
-    	case 'η':
-    		return 'ή';
-    	case 'ι':
-    		return 'ί';
-    	case 'ο':
-    		return 'ό';
-    	case 'υ':
-    		return 'ύ';
-    	case 'ω':
-    		return 'ώ';
-    	case 'Α':
-    		return 'Ά';
-    	case 'Ε':
-    		return 'Έ';
-    	case 'Ι':
-    		return 'Ί';
-    	case 'Ο':
-    		return 'Ό';
-    	case 'Υ':
-    		return 'Ύ';
-    	case 'Ω':
-    		return 'Ώ';
-    	default:
-    		return code;
-    	}
+    	return sAcuteAccentTable.get(code, code);
     }
     
     /**
@@ -485,90 +462,19 @@ public class GreekIME extends InputMethodService
      * @return          Corresponding character code, or -1 if none exists (no translation)
      */
     private int keyCodeToChar (int keyCode, boolean upperCase, boolean accented) {
-        switch (keyCode) {
-        case KeyEvent.KEYCODE_A:
-        	if (accented) {
-                return upperCase ? 'Ά' : 'ά';
-        	} else {
-                return upperCase ? 'Α' : 'α';        		
-        	}
-        case KeyEvent.KEYCODE_B:
-            return upperCase ? 'Β' : 'β';
-        case KeyEvent.KEYCODE_C:
-            return upperCase ? 'Ψ' : 'ψ';
-        case KeyEvent.KEYCODE_D:
-            return upperCase ? 'Δ' : 'δ';
-        case KeyEvent.KEYCODE_E:
-        	if (accented) {
-                return upperCase ? 'Έ' : 'έ';
-        	} else {
-                return upperCase ? 'Ε' : 'ε';
-        	}
-        case KeyEvent.KEYCODE_F:
-            return upperCase ? 'Φ' : 'φ';
-        case KeyEvent.KEYCODE_G:
-            return upperCase ? 'Γ' : 'γ';
-        case KeyEvent.KEYCODE_H:
-        	if (accented) {
-                return upperCase ? 'Ή' : 'ή';        		
-        	} else {
-                return upperCase ? 'Η' : 'η';
-            }
-        case KeyEvent.KEYCODE_I:
-        	if (accented) {
-                return upperCase ? 'Ί' : 'ί';
-        	} else {
-                return upperCase ? 'Ι' : 'ι';
-        	}
-        case KeyEvent.KEYCODE_J:
-            return upperCase ? 'Ξ' : 'ξ';
-        case KeyEvent.KEYCODE_K:
-            return upperCase ? 'Κ' : 'κ';
-        case KeyEvent.KEYCODE_L:
-            return upperCase ? 'Λ' : 'λ';
-        case KeyEvent.KEYCODE_M:
-            return upperCase ? 'Μ' : 'μ';
-        case KeyEvent.KEYCODE_N:
-            return upperCase ? 'Ν' : 'ν';
-        case KeyEvent.KEYCODE_O:
-        	if (accented) {
-                return upperCase ? 'Ό' : 'ό';
-        	} else {
-                return upperCase ? 'Ο' : 'ο';
-        	}
-        case KeyEvent.KEYCODE_P:
-            return upperCase ? 'Π' : 'π';
-        case KeyEvent.KEYCODE_Q:
-            return -1;  // XXX - check
-        case KeyEvent.KEYCODE_R:
-            return upperCase ? 'Ρ' : 'ρ';
-        case KeyEvent.KEYCODE_S:
-            return upperCase ? 'Σ' : 'σ';
-        case KeyEvent.KEYCODE_T:
-            return upperCase ? 'Τ' : 'τ';
-        case KeyEvent.KEYCODE_U:
-            return upperCase ? 'Θ' : 'θ';
-        case KeyEvent.KEYCODE_V:
-        	if (accented) {
-                return upperCase ? 'Ώ' : 'ώ';
-        	} else {
-                return upperCase ? 'Ω' : 'ω';        		
-        	}
-        case KeyEvent.KEYCODE_W:
-            return upperCase ? 'Σ' : 'ς';
-        case KeyEvent.KEYCODE_X:
-            return upperCase ? 'Χ' : 'χ';
-        case KeyEvent.KEYCODE_Y:
-        	if (accented) {
-                return upperCase ? 'Ύ' : 'ύ';
-        	} else {
-                return upperCase ? 'Υ' : 'υ';        		
-        	}
-        case KeyEvent.KEYCODE_Z:
-            return upperCase ? 'Ζ' : 'ζ';
-        default:
-        	return -1;
-    	}
+        int code;
+        if (mIMMode && mSMS7bitMode) {
+        	code = sSMSKeyCodeTable.get(keyCode, -1);
+        } else {
+        	code = sKeyCodeTable.get(keyCode, -1);
+        } 
+        if (accented) {
+        	code = addAccent(code);
+        }
+        if (upperCase) {
+        	code = Character.toUpperCase(code);
+        }
+        return code;
     }
     
     /**
@@ -761,8 +667,9 @@ public class GreekIME extends InputMethodService
     private void loadSettings() {
         // Get the settings preferences
         SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(this);
-        mVibrateOn = sp.getBoolean(PREF_VIBRATE_ON, false);
+        mVibrateOn = sp.getBoolean(PREF_VIBRATE_ON, true);
         mSoundOn = sp.getBoolean(PREF_SOUND_ON, false);
+        mSMS7bitMode = sp.getBoolean(PREF_SMS_7BIT, true);
         mAutoCap = sp.getBoolean(PREF_AUTO_CAP, true);
     }
 
@@ -825,7 +732,7 @@ public class GreekIME extends InputMethodService
         super.dump(fd, fout, args);
         
         final Printer p = new PrintWriterPrinter(fout);
-        p.println("LatinIME state :");
+        p.println("GreekIME state :");
         p.println("  Keyboard mode = " + mKeyboardSwitcher.getKeyboardMode());
         p.println("  mCapsLock=" + mCapsLock);
         p.println("  mComposing=" + mComposing.toString());
@@ -855,6 +762,81 @@ public class GreekIME extends InputMethodService
         System.out.println("CPS = " + ((CPS_BUFFER_SIZE * 1000f) / total));
     }
     
+    private static SparseIntArray sAcuteAccentTable = new SparseIntArray();
+    private static SparseIntArray sKeyCodeTable = new SparseIntArray();
+    private static SparseIntArray sSMSKeyCodeTable = new SparseIntArray();
+    static {
+    	// Initialize accent table
+    	sAcuteAccentTable.append('\u0391', '\u0386');  // Α -> Ά
+    	sAcuteAccentTable.append('\u0395', '\u0388');  // Ε -> Έ
+    	sAcuteAccentTable.append('\u0399', '\u038a');  // Ι -> Ί
+    	sAcuteAccentTable.append('\u039f', '\u038c');  // Ο -> Ό
+    	sAcuteAccentTable.append('\u03a5', '\u038e');  // Υ -> Ύ
+    	sAcuteAccentTable.append('\u03a9', '\u038f');  // Ω -> Ώ
+    	sAcuteAccentTable.append('\u03b1', '\u03ac');  // α -> ά
+    	sAcuteAccentTable.append('\u03b5', '\u03ad');  // ε -> έ
+    	sAcuteAccentTable.append('\u03b7', '\u03ae');  // η -> ή
+    	sAcuteAccentTable.append('\u03b9', '\u03af');  // ι -> ί
+    	sAcuteAccentTable.append('\u03bf', '\u03cc');  // ο -> ό
+    	sAcuteAccentTable.append('\u03c5', '\u03cd');  // υ -> ύ
+    	sAcuteAccentTable.append('\u03c9', '\u03ce');  // ω -> ώ
+    	
+    	// Initialize hardware key code table
+        sKeyCodeTable.append(KeyEvent.KEYCODE_A, '\u03b1');  // α
+        sKeyCodeTable.append(KeyEvent.KEYCODE_B, '\u03b2');  // β
+        sKeyCodeTable.append(KeyEvent.KEYCODE_C, '\u03c8');  // ψ
+        sKeyCodeTable.append(KeyEvent.KEYCODE_D, '\u03b4');  // δ
+        sKeyCodeTable.append(KeyEvent.KEYCODE_E, '\u03b5');  // ε
+        sKeyCodeTable.append(KeyEvent.KEYCODE_F, '\u03c6');  // φ
+        sKeyCodeTable.append(KeyEvent.KEYCODE_G, '\u03b3');  // γ
+        sKeyCodeTable.append(KeyEvent.KEYCODE_H, '\u03b7');  // η
+        sKeyCodeTable.append(KeyEvent.KEYCODE_I, '\u03b9');  // ι
+        sKeyCodeTable.append(KeyEvent.KEYCODE_J, '\u03be');  // ξ
+        sKeyCodeTable.append(KeyEvent.KEYCODE_K, '\u03ba');  // κ
+        sKeyCodeTable.append(KeyEvent.KEYCODE_L, '\u03bb');  // λ
+        sKeyCodeTable.append(KeyEvent.KEYCODE_M, '\u03bc');  // μ
+        sKeyCodeTable.append(KeyEvent.KEYCODE_N, '\u03bd');  // ν
+        sKeyCodeTable.append(KeyEvent.KEYCODE_O, '\u03bf');  // ο
+        sKeyCodeTable.append(KeyEvent.KEYCODE_P, '\u03c0');  // π
+        // No mapping for KeyEvent.KEYCODE_Q:
+        sKeyCodeTable.append(KeyEvent.KEYCODE_R, '\u03c1');  // ρ
+        sKeyCodeTable.append(KeyEvent.KEYCODE_S, '\u03c3');  // σ
+        sKeyCodeTable.append(KeyEvent.KEYCODE_T, '\u03c4');  // τ
+        sKeyCodeTable.append(KeyEvent.KEYCODE_U, '\u03b8');  // θ
+        sKeyCodeTable.append(KeyEvent.KEYCODE_V, '\u03c9');  // ω  		
+        sKeyCodeTable.append(KeyEvent.KEYCODE_W, '\u03c2');  // ς
+        sKeyCodeTable.append(KeyEvent.KEYCODE_X, '\u03c7');  // χ
+        sKeyCodeTable.append(KeyEvent.KEYCODE_Y, '\u03c5');  // υ
+        sKeyCodeTable.append(KeyEvent.KEYCODE_Z, '\u03b6');  // ζ
+        
+        // Initialize hardware keycode table, for faking 7bit SMS coding
+        sSMSKeyCodeTable.append(KeyEvent.KEYCODE_A, 'A');
+        sSMSKeyCodeTable.append(KeyEvent.KEYCODE_B, 'B');
+        sSMSKeyCodeTable.append(KeyEvent.KEYCODE_C, '\u03a8');  // Ψ
+        sSMSKeyCodeTable.append(KeyEvent.KEYCODE_D, '\u0394');  // Δ
+        sSMSKeyCodeTable.append(KeyEvent.KEYCODE_E, 'E');
+        sSMSKeyCodeTable.append(KeyEvent.KEYCODE_F, '\u03a6');  // Φ
+        sSMSKeyCodeTable.append(KeyEvent.KEYCODE_G, '\u0393');  // Γ
+        sSMSKeyCodeTable.append(KeyEvent.KEYCODE_H, 'H');
+        sSMSKeyCodeTable.append(KeyEvent.KEYCODE_I, 'I');
+        sSMSKeyCodeTable.append(KeyEvent.KEYCODE_J, '\u039e');  // Ξ
+        sSMSKeyCodeTable.append(KeyEvent.KEYCODE_K, 'K');
+        sSMSKeyCodeTable.append(KeyEvent.KEYCODE_L, '\u039b');  // Λ
+        sSMSKeyCodeTable.append(KeyEvent.KEYCODE_M, 'M');
+        sSMSKeyCodeTable.append(KeyEvent.KEYCODE_N, 'N');
+        sSMSKeyCodeTable.append(KeyEvent.KEYCODE_O, 'O');
+        sSMSKeyCodeTable.append(KeyEvent.KEYCODE_P, '\u03a0');  // Π
+        // No mapping for KeyEvent.KEYCODE_Q:
+        sSMSKeyCodeTable.append(KeyEvent.KEYCODE_R, 'P');
+        sSMSKeyCodeTable.append(KeyEvent.KEYCODE_S, '\u03a3');  // Σ
+        sSMSKeyCodeTable.append(KeyEvent.KEYCODE_T, 'T');
+        sSMSKeyCodeTable.append(KeyEvent.KEYCODE_U, '\u0398');  // Θ
+        sSMSKeyCodeTable.append(KeyEvent.KEYCODE_V, '\u03a9');  // Ω  		
+        sSMSKeyCodeTable.append(KeyEvent.KEYCODE_W, '\u03a3');  // Σ
+        sSMSKeyCodeTable.append(KeyEvent.KEYCODE_X, 'X');
+        sSMSKeyCodeTable.append(KeyEvent.KEYCODE_Y, 'Y');
+        sSMSKeyCodeTable.append(KeyEvent.KEYCODE_Z, 'Z');        
+    }
 }
 
 

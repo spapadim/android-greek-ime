@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+/* 
+**
+** Copyright 2008, The Android Open Source Project
+**
+** Licensed under the Apache License, Version 2.0 (the "License"); 
+** you may not use this file except in compliance with the License. 
+** You may obtain a copy of the License at 
+**
+**     http://www.apache.org/licenses/LICENSE-2.0 
+**
+** Unless required by applicable law or agreed to in writing, software 
+** distributed under the License is distributed on an "AS IS" BASIS, 
+** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. 
+** See the License for the specific language governing permissions and 
+** limitations under the License.
+*/
+-->
+
+<Keyboard xmlns:android="http://schemas.android.com/apk/res/android"
+    android:keyWidth="10%p"
+    android:horizontalGap="0px"
+    android:verticalGap="0px"
+    android:keyHeight="@dimen/key_height"
+    >
+
+    <Row>
+        <!-- Skip final-sigma key, because 7bit alphabet only has upper case -->
+        <Key android:codes="69" android:keyLabel="&#917;" android:horizontalGap="10%p"
+                android:keyEdgeFlags="left"/>  <!-- Ε -->
+        <Key android:codes="80" android:keyLabel="&#929;"/>  <!--  Ρ -->
+        <Key android:codes="84" android:keyLabel="&#932;"/>  <!-- Τ -->
+        <Key android:codes="89" android:keyLabel="&#933;"/>  <!--  Υ -->
+        <Key android:codes="920" android:keyLabel="&#920;"/>  <!-- Θ -->
+        <Key android:codes="73" android:keyLabel="&#921;"/>  <!--  Ι -->
+        <Key android:codes="79" android:keyLabel="&#927;"/>  <!-- Ο -->
+        <Key android:codes="928" android:keyLabel="&#928;"/>  <!-- Π -->
+        <!--  Skip accent key, because 7bit alphabet only has un-accented characters -->
+    </Row>    
+    
+    <Row>
+        <Key android:codes="65" android:keyLabel="&#913;" android:horizontalGap="5%p" 
+                android:keyEdgeFlags="left"/>  <!--  Α -->
+        <Key android:codes="931" android:keyLabel="&#931;"/>  <!-- Σ -->
+        <Key android:codes="916" android:keyLabel="&#916;"/>  <!-- Δ -->
+        <Key android:codes="934" android:keyLabel="&#934;"/>  <!-- Φ -->
+        <Key android:codes="915" android:keyLabel="&#915;"/>  <!-- Γ -->
+        <Key android:codes="72" android:keyLabel="&#919;"/>  <!-- Η -->
+        <Key android:codes="926" android:keyLabel="&#926;"/>  <!-- Ξ -->
+        <Key android:codes="75" android:keyLabel="&#75;"/>  <!-- Κ -->
+        <Key android:codes="923" android:keyLabel="&#923;" android:keyEdgeFlags="right"/>  <!-- Λ -->
+    </Row>    
+    
+    <Row>
+        <!-- Skip shift key, because 7bit alphabet has only upper case characters -->
+        <Key android:codes="90" android:keyLabel="&#918;" android:horizontalGap="15%p"
+                android:keyEdgeFlags="left"/>  <!-- Ζ -->
+        <Key android:codes="88" android:keyLabel="&#935;"/>  <!-- Χ -->
+        <Key android:codes="936" android:keyLabel="&#936;"/>  <!-- Ψ -->
+        <Key android:codes="937" android:keyLabel="&#937;"/>  <!-- Ω -->
+        <Key android:codes="66" android:keyLabel="&#914;"/> <!-- Β -->
+        <Key android:codes="78" android:keyLabel="&#925;"/> <!-- Ν -->
+        <Key android:codes="77" android:keyLabel="&#924;"/> <!-- Μ -->
+        <Key android:codes="-5" android:keyIcon="@drawable/sym_keyboard_delete" 
+                android:keyWidth="15%p" android:keyEdgeFlags="right" 
+                android:iconPreview="@drawable/sym_keyboard_feedback_delete"
+                android:isRepeatable="true"/>
+    </Row>
+
+    <Row android:keyboardMode="@+id/mode_im" android:rowEdgeFlags="bottom">
+        <Key android:codes="-2" android:keyIcon="@drawable/sym_keyboard_gb" 
+                android:popupKeyboard="@xml/kbd_popup_template"
+                android:popupCharacters=""
+                android:iconPreview="@drawable/sym_keyboard_feedback_gb"
+                android:keyWidth="20%p" android:keyEdgeFlags="left"/>
+        <Key android:codes="-102" android:keyLabel="@string/label_symbol_key" 
+                android:keyWidth="15%p"/>
+        <Key android:codes="32" android:keyIcon="@drawable/sym_keyboard_space" 
+                android:iconPreview="@drawable/sym_keyboard_feedback_space"
+                android:keyWidth="30%p" android:isRepeatable="true"/>
+        <Key android:codes="46,44" android:keyLabel=". ," 
+                android:popupKeyboard="@xml/popup_punctuation" android:keyWidth="15%p"/>
+        <Key android:keyLabel=":-)" android:keyOutputText=":-) "
+                android:popupKeyboard="@xml/popup_smileys"
+                android:keyWidth="20%p" android:keyEdgeFlags="right"/>
+    </Row>
+</Keyboard>

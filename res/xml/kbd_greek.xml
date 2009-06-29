@@ -26,35 +26,35 @@
     >
 
     <Row>
-        <Key android:codes="962" android:keyLabel="ς" android:keyEdgeFlags="left"/>
-        <Key android:codes="949,941" android:keyLabel="ε"/>
-        <Key android:codes="961" android:keyLabel="ρ"/>
-        <Key android:codes="964" android:keyLabel="τ"/>
-        <Key android:codes="965,973,971,944" android:keyLabel="υ"
+        <Key android:codes="962" android:keyLabel="&#962;" android:keyEdgeFlags="left"/>
+        <Key android:codes="949,941" android:keyLabel="&#949;"/>
+        <Key android:codes="961" android:keyLabel="&#961;"/>
+        <Key android:codes="964" android:keyLabel="&#964;"/>
+        <Key android:codes="965,973,971,944" android:keyLabel="&#965;"
                 android:popupKeyboard="@xml/kbd_popup_template"
                 android:popupCharacters="@string/alternates_for_ypsilon"/>
-        <Key android:codes="952" android:keyLabel="θ"/>
-        <Key android:codes="953,943,970,912" android:keyLabel="ι"
+        <Key android:codes="952" android:keyLabel="&#952;"/>
+        <Key android:codes="953,943,970,912" android:keyLabel="&#953;"
                 android:popupKeyboard="@xml/kbd_popup_template"
                 android:popupCharacters="@string/alternates_for_iota"/>
-        <Key android:codes="959,972" android:keyLabel="ο"/>
-        <Key android:codes="960" android:keyLabel="π"/>
-        <Key android:codes="-106" android:keyLabel="΄" 
+        <Key android:codes="959,972" android:keyLabel="&#959;"/>
+        <Key android:codes="960" android:keyLabel="&#960;"/>
+        <Key android:codes="-106" android:keyLabel="&#900;" 
                 android:isModifier="true" android:isSticky="false" 
                 android:keyEdgeFlags="right"/>
     </Row>    
     
     <Row>
-        <Key android:codes="945,940" android:keyLabel="α" android:horizontalGap="5%p" 
+        <Key android:codes="945,940" android:keyLabel="&#945;" android:horizontalGap="5%p" 
                 android:keyEdgeFlags="left"/>
-        <Key android:codes="963" android:keyLabel="σ"/>
-        <Key android:codes="948" android:keyLabel="δ"/>
-        <Key android:codes="966" android:keyLabel="φ"/>
-        <Key android:codes="947" android:keyLabel="γ"/>
-        <Key android:codes="951,942" android:keyLabel="η"/>
-        <Key android:codes="958" android:keyLabel="ξ"/>
-        <Key android:codes="954" android:keyLabel="κ"/>
-        <Key android:codes="955" android:keyLabel="λ" android:keyEdgeFlags="right"/>
+        <Key android:codes="963,962" android:keyLabel="&#963;"/>
+        <Key android:codes="948" android:keyLabel="&#948;"/>
+        <Key android:codes="966" android:keyLabel="&#966;"/>
+        <Key android:codes="947" android:keyLabel="&#947;"/>
+        <Key android:codes="951,942" android:keyLabel="&#951;"/>
+        <Key android:codes="958" android:keyLabel="&#958;"/>
+        <Key android:codes="954" android:keyLabel="&#954;"/>
+        <Key android:codes="955" android:keyLabel="&#955;" android:keyEdgeFlags="right"/>
     </Row>    
     
     <Row>
@@ -62,13 +62,13 @@
                 android:keyWidth="15%p" android:isModifier="true"
                 android:iconPreview="@drawable/sym_keyboard_feedback_shift"
                 android:isSticky="true" android:keyEdgeFlags="left"/>
-        <Key android:codes="950" android:keyLabel="ζ"/>
-        <Key android:codes="967" android:keyLabel="χ"/>
-        <Key android:codes="968" android:keyLabel="ψ"/>
-        <Key android:codes="969,974" android:keyLabel="ω"/>
-        <Key android:codes="946" android:keyLabel="β"/>
-        <Key android:codes="957" android:keyLabel="ν"/>
-        <Key android:codes="956" android:keyLabel="μ"/>
+        <Key android:codes="950" android:keyLabel="&#950;"/>
+        <Key android:codes="967" android:keyLabel="&#967;"/>
+        <Key android:codes="968" android:keyLabel="&#968;"/>
+        <Key android:codes="969,974" android:keyLabel="&#969;"/>
+        <Key android:codes="946" android:keyLabel="&#946;"/>
+        <Key android:codes="957" android:keyLabel="&#957;"/>
+        <Key android:codes="956" android:keyLabel="&#956;"/>
         <Key android:codes="-5" android:keyIcon="@drawable/sym_keyboard_delete" 
                 android:keyWidth="15%p" android:keyEdgeFlags="right" 
                 android:iconPreview="@drawable/sym_keyboard_feedback_delete"
