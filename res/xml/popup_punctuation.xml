@@ -27,6 +27,7 @@
 
     <Row android:rowEdgeFlags="top|bottom">
         <Key android:codes="58" android:keyLabel=":" android:keyEdgeFlags="left" />
+        <Key android:codes="59" android:keyLabel=";" />
         <Key android:codes="47" android:keyLabel="/" />
         <Key android:codes="64" android:keyLabel="\@" />
         <Key android:codes="39" android:keyLabel="\'" />

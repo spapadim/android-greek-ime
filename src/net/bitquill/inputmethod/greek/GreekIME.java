@@ -96,8 +96,12 @@ public class GreekIME extends InputMethodService
     private int mDeleteCount;
     private long mLastKeyTime;
     
+    public static enum AccentState { 
+    	ACCENT_STATE_NONE, ACCENT_STATE_ACUTE, ACCENT_STATE_DIAERESIS, ACCENT_STATE_BOTH 
+    };
+    
     private boolean mIMMode;
-    private boolean mAccentShift;
+    private AccentState mAccentShiftState;
     private boolean mCapsShift;
     
     private Vibrator mVibrator;
@@ -228,7 +232,6 @@ public class GreekIME extends InputMethodService
         if (mInputView != null) {
             mInputView.closing();
         }
-        
         hideStatusIcon();
     }
 
@@ -351,7 +354,7 @@ public class GreekIME extends InputMethodService
         switch (primaryCode) {
             case Keyboard.KEYCODE_DELETE:
                 handleBackspace();
-                mAccentShift = false;
+                accentStateClear();
                 mDeleteCount++;
                 break;
             case Keyboard.KEYCODE_SHIFT:
@@ -365,7 +368,7 @@ public class GreekIME extends InputMethodService
                 break;
             case SoftKeyboard.KEYCODE_OPTIONS:
                 showOptionsMenu();
-                mAccentShift = false;
+                accentStateClear();
                 break;
             case SoftKeyboard.KEYCODE_SHIFT_LONGPRESS:
                 if (mCapsLock) {
@@ -377,14 +380,14 @@ public class GreekIME extends InputMethodService
                 break;
             case Keyboard.KEYCODE_MODE_CHANGE:
                 changeKeyboardLanguage();
-                mAccentShift = false;
+                accentStateClear();
                 break;
             case SoftKeyboard.KEYCODE_SYMBOL_SHIFT:
             	changeKeyboardSymbols();
-            	mAccentShift = false;
+            	accentStateClear();
             	break;
             case SoftKeyboard.KEYCODE_ACCENT:
-            	mAccentShift = true;
+            	accentStateShift();
             	break;
             default:
                 if (isWordSeparator(primaryCode)) {
@@ -392,7 +395,6 @@ public class GreekIME extends InputMethodService
                 } else {
                     handleCharacter(primaryCode, keyCodes);
                 }
-            	mAccentShift = false;
         }
     }
     
@@ -436,13 +438,48 @@ public class GreekIME extends InputMethodService
         if (mInputView.isShifted()) {
             primaryCode = Character.toUpperCase(primaryCode);
         }
-        if (mAccentShift && KeyboardSwitcher.LANGUAGE_EL == mKeyboardSwitcher.getKeyboardLanguage()) {
-        	primaryCode = addAccent(primaryCode);
+        if (mAccentShiftState != AccentState.ACCENT_STATE_NONE 
+                && KeyboardSwitcher.LANGUAGE_EL == mKeyboardSwitcher.getKeyboardLanguage()) {
+        	primaryCode = addAccent(primaryCode, mAccentShiftState);
         }
         sendKeyChar((char)primaryCode);
         updateShiftKeyState(getCurrentInputEditorInfo());
+        accentStateClear();
         measureCps();
         TextEntryState.typedCharacter((char) primaryCode, isWordSeparator(primaryCode));
+    }
+    
+    /**
+     * 
+     */
+    private void accentStateShift () {
+    	InputConnection ic = getCurrentInputConnection();
+    	switch (mAccentShiftState) {
+    	case ACCENT_STATE_NONE:
+    		mAccentShiftState = AccentState.ACCENT_STATE_ACUTE;
+    		ic.setComposingText("\u0384", 1);
+    		break;
+    	case ACCENT_STATE_ACUTE:
+    		mAccentShiftState = AccentState.ACCENT_STATE_DIAERESIS;
+    		ic.setComposingText("\u00a8", 1);
+    		break;
+    	case ACCENT_STATE_DIAERESIS:
+    		mAccentShiftState = AccentState.ACCENT_STATE_BOTH;
+    		ic.setComposingText("\u0385", 1);
+    		break;
+    	default:
+    		mAccentShiftState = AccentState.ACCENT_STATE_NONE;
+    		ic.setComposingText("", 1);
+    		break;
+    	}
+    }
+    
+    private void accentStateClear () {
+    	InputConnection ic = getCurrentInputConnection();
+    	mAccentShiftState = AccentState.ACCENT_STATE_NONE;
+    	if (ic != null) {  // XXX - why should we have to check?
+    		ic.setComposingText("", 1);
+    	}
     }
     
     /**
@@ -450,8 +487,19 @@ public class GreekIME extends InputMethodService
      * @param code  Unicode character code
      * @return      Corresponding accented character; returns code itself if character cannot be accented
      */
-    private int addAccent (int code) {
-    	return sAcuteAccentTable.get(code, code);
+    private int addAccent (int code, AccentState accentState) {
+    	switch (accentState) {
+    	case ACCENT_STATE_NONE:
+    		return code;
+    	case ACCENT_STATE_ACUTE:
+    		return sAcuteAccentTable.get(code, code);
+    	case ACCENT_STATE_DIAERESIS:
+    		return sDiaeresisAccentTable.get(code, code);
+    	case ACCENT_STATE_BOTH:
+    		return sBothAccentTable.get(code, code);
+    	default:
+    		return code;
+    	}
     }
     
     /**
@@ -461,15 +509,15 @@ public class GreekIME extends InputMethodService
      * @param accented  Whether character should have an acute accent or not
      * @return          Corresponding character code, or -1 if none exists (no translation)
      */
-    private int keyCodeToChar (int keyCode, boolean upperCase, boolean accented) {
+    private int keyCodeToChar (int keyCode, boolean upperCase, AccentState accentState) {
         int code;
         if (mIMMode && mSMS7bitMode) {
         	code = sSMSKeyCodeTable.get(keyCode, -1);
         } else {
         	code = sKeyCodeTable.get(keyCode, -1);
         } 
-        if (accented) {
-        	code = addAccent(code);
+        if (accentState != AccentState.ACCENT_STATE_NONE) {
+        	code = addAccent(code, accentState);
         }
         if (upperCase) {
         	code = Character.toUpperCase(code);
@@ -484,11 +532,7 @@ public class GreekIME extends InputMethodService
      * @return         True if the event was consumed, false if it should be propagated
      */
     private boolean handleHardKeyGreek(int keyCode, KeyEvent event) {
-    	if (KeyEvent.KEYCODE_Q == keyCode
-    			|| KeyEvent.KEYCODE_SEMICOLON == keyCode) {
-    		mAccentShift = true;
-    		return true;
-    	} else if (KeyEvent.KEYCODE_SHIFT_LEFT == keyCode
+    	if (KeyEvent.KEYCODE_SHIFT_LEFT == keyCode
     			|| KeyEvent.KEYCODE_SHIFT_RIGHT == keyCode) {
     		// FIXME - Cannot figure out how to access hardware keyboard caps state,
     		// so faking it, like PinyinIME does
@@ -496,15 +540,20 @@ public class GreekIME extends InputMethodService
     		return true;
     	} else {
     		boolean caps = event.isShiftPressed() || mCapsShift;
-			int greekCode = keyCodeToChar (keyCode, caps, mAccentShift);
-			mAccentShift = false;
+			int greekCode = keyCodeToChar (keyCode, caps, mAccentShiftState);
 			mCapsShift = false;
     		if (greekCode >= 0) {
     			sendKeyChar((char)greekCode);
+    			accentStateClear();
     			return true;
+    		} else if (greekCode == SoftKeyboard.KEYCODE_ACCENT) {
+    			accentStateShift();
+    			return true;
+    		} else {
+    			accentStateClear(); // XXX - check?
+    			return false;
     		}
     	}
-    	return false;
     }
 
     private void handleSeparator(int primaryCode) {
@@ -520,6 +569,7 @@ public class GreekIME extends InputMethodService
             swapPunctuationAndSpace();
         }
         updateShiftKeyState(getCurrentInputEditorInfo());
+        accentStateClear();
         if (ic != null) {
             ic.endBatchEdit();
         }
@@ -763,10 +813,12 @@ public class GreekIME extends InputMethodService
     }
     
     private static SparseIntArray sAcuteAccentTable = new SparseIntArray();
+    private static SparseIntArray sDiaeresisAccentTable = new SparseIntArray();
+    private static SparseIntArray sBothAccentTable = new SparseIntArray();
     private static SparseIntArray sKeyCodeTable = new SparseIntArray();
     private static SparseIntArray sSMSKeyCodeTable = new SparseIntArray();
     static {
-    	// Initialize accent table
+    	// Initialize acute accent table
     	sAcuteAccentTable.append('\u0391', '\u0386');  // Α -> Ά
     	sAcuteAccentTable.append('\u0395', '\u0388');  // Ε -> Έ
     	sAcuteAccentTable.append('\u0399', '\u038a');  // Ι -> Ί
@@ -780,6 +832,14 @@ public class GreekIME extends InputMethodService
     	sAcuteAccentTable.append('\u03bf', '\u03cc');  // ο -> ό
     	sAcuteAccentTable.append('\u03c5', '\u03cd');  // υ -> ύ
     	sAcuteAccentTable.append('\u03c9', '\u03ce');  // ω -> ώ
+    	// Initialize diaeresis table
+    	sDiaeresisAccentTable.append('\u0399', '\u03aa');  // Ι -> Ϊ
+    	sDiaeresisAccentTable.append('\u03a5', '\u03ab');  // Υ -> Ϋ
+    	sDiaeresisAccentTable.append('\u03b9', '\u03ca');  // ι -> ϊ
+    	sDiaeresisAccentTable.append('\u03c5', '\u03cb');  // υ -> ϋ
+    	// Initialize acute+diaeresis table
+    	sBothAccentTable.append('\u03b9', '\u0390');  // ι -> ΐ
+    	sBothAccentTable.append('\u03c5', '\u03b0');  // υ -> ΰ
     	
     	// Initialize hardware key code table
         sKeyCodeTable.append(KeyEvent.KEYCODE_A, '\u03b1');  // α
@@ -798,7 +858,7 @@ public class GreekIME extends InputMethodService
         sKeyCodeTable.append(KeyEvent.KEYCODE_N, '\u03bd');  // ν
         sKeyCodeTable.append(KeyEvent.KEYCODE_O, '\u03bf');  // ο
         sKeyCodeTable.append(KeyEvent.KEYCODE_P, '\u03c0');  // π
-        // No mapping for KeyEvent.KEYCODE_Q:
+        sKeyCodeTable.append(KeyEvent.KEYCODE_Q, SoftKeyboard.KEYCODE_ACCENT);
         sKeyCodeTable.append(KeyEvent.KEYCODE_R, '\u03c1');  // ρ
         sKeyCodeTable.append(KeyEvent.KEYCODE_S, '\u03c3');  // σ
         sKeyCodeTable.append(KeyEvent.KEYCODE_T, '\u03c4');  // τ
@@ -808,6 +868,7 @@ public class GreekIME extends InputMethodService
         sKeyCodeTable.append(KeyEvent.KEYCODE_X, '\u03c7');  // χ
         sKeyCodeTable.append(KeyEvent.KEYCODE_Y, '\u03c5');  // υ
         sKeyCodeTable.append(KeyEvent.KEYCODE_Z, '\u03b6');  // ζ
+        sKeyCodeTable.append(KeyEvent.KEYCODE_SEMICOLON, SoftKeyboard.KEYCODE_ACCENT);
         
         // Initialize hardware keycode table, for faking 7bit SMS coding
         sSMSKeyCodeTable.append(KeyEvent.KEYCODE_A, 'A');
@@ -826,7 +887,7 @@ public class GreekIME extends InputMethodService
         sSMSKeyCodeTable.append(KeyEvent.KEYCODE_N, 'N');
         sSMSKeyCodeTable.append(KeyEvent.KEYCODE_O, 'O');
         sSMSKeyCodeTable.append(KeyEvent.KEYCODE_P, '\u03a0');  // Π
-        // No mapping for KeyEvent.KEYCODE_Q:
+        // No mapping for KeyEvent.KEYCODE_Q
         sSMSKeyCodeTable.append(KeyEvent.KEYCODE_R, 'P');
         sSMSKeyCodeTable.append(KeyEvent.KEYCODE_S, '\u03a3');  // Σ
         sSMSKeyCodeTable.append(KeyEvent.KEYCODE_T, 'T');
@@ -835,7 +896,7 @@ public class GreekIME extends InputMethodService
         sSMSKeyCodeTable.append(KeyEvent.KEYCODE_W, '\u03a3');  // Σ
         sSMSKeyCodeTable.append(KeyEvent.KEYCODE_X, 'X');
         sSMSKeyCodeTable.append(KeyEvent.KEYCODE_Y, 'Y');
-        sSMSKeyCodeTable.append(KeyEvent.KEYCODE_Z, 'Z');        
+        sSMSKeyCodeTable.append(KeyEvent.KEYCODE_Z, 'Z');
     }
 }
 

@@ -34,6 +34,7 @@
     <CheckBoxPreference
             android:key="auto_cap"
             android:title="@string/auto_cap"
+            android:summary="@string/auto_cap_summary"
             android:persistent="true"
             android:defaultValue="true"
             />
@@ -41,6 +42,7 @@
     <CheckBoxPreference
             android:key="sms_7bit"
             android:title="@string/sms_7bit"
+            android:summary="@string/sms_7bit_summary"
             android:persistent="true"
             android:defaultValue="true"
             />
