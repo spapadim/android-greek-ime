@@ -378,11 +378,11 @@ public class GreekIME extends InputMethodService
                 }
                 // Don't reset accent shift here
                 break;
-            case Keyboard.KEYCODE_MODE_CHANGE:
+            case SoftKeyboard.KEYCODE_LANGUAGE_CHANGE:
                 changeKeyboardLanguage();
                 accentStateClear();
                 break;
-            case SoftKeyboard.KEYCODE_SYMBOL_SHIFT:
+            case Keyboard.KEYCODE_MODE_CHANGE:
             	changeKeyboardSymbols();
             	accentStateClear();
             	break;

@@ -41,7 +41,7 @@ public class SoftKeyboard extends Keyboard {
 	static final int KEYCODE_SHIFT_LONGPRESS = -101;
 	static final int KEYCODE_OPTIONS = -100;
 	static final int KEYCODE_ACCENT = -106;
-	static final int KEYCODE_SYMBOL_SHIFT = -102;
+	static final int KEYCODE_LANGUAGE_CHANGE = -102;
     
     private static final int SHIFT_OFF = 0;
     private static final int SHIFT_ON = 1;
