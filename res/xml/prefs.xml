@@ -40,6 +40,14 @@
             />
 
     <CheckBoxPreference
+            android:key="auto_final_sigma"
+            android:title="@string/auto_final_sigma"
+            android:summary="@string/auto_final_sigma_summary"
+            android:persistent="true"
+            android:defaultValue="true"
+            />
+
+    <CheckBoxPreference
             android:key="sms_7bit"
             android:title="@string/sms_7bit"
             android:summary="@string/sms_7bit_summary"

@@ -30,6 +30,9 @@
     <!--  Option to restrict input only to characters available in 7bit SMS encoding -->
 	<string name="sms_7bit">7bit SMS/IM mode</string>
 	<string name="sms_7bit_summary">Restrict input to 7bit alphabet</string>
+	<!-- Option to automatically convert sigma to final sigma at end of words -->
+	<string name="auto_final_sigma">Auto-finalize sigma</string>
+	<string name="auto_final_sigma_summary">Change to final sigma at end of words</string>
     <!-- Option to enable auto capitalization of sentences -->
     <string name="auto_cap">Auto-capitalization</string> 
     <!-- Description for auto cap -->
