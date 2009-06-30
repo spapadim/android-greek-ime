@@ -39,6 +39,7 @@ import android.os.Vibrator;
 import android.preference.PreferenceManager;
 import android.text.ClipboardManager;
 import android.text.TextUtils;
+import android.util.Log;
 import android.util.PrintWriterPrinter;
 import android.util.Printer;
 import android.util.SparseIntArray;
@@ -354,7 +355,6 @@ public class GreekIME extends InputMethodService
         switch (primaryCode) {
             case Keyboard.KEYCODE_DELETE:
                 handleBackspace();
-                accentStateClear();
                 mDeleteCount++;
                 break;
             case Keyboard.KEYCODE_SHIFT:
@@ -417,10 +417,14 @@ public class GreekIME extends InputMethodService
         if (TextEntryState.getState() == TextEntryState.STATE_UNDO_COMMIT) {
             return;
         } else if (deleteChar) {
-            sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL);
-            if (mDeleteCount > DELETE_ACCELERATE_AT) {
-                sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL);
-            }
+        	if (mAccentShiftState != AccentState.ACCENT_STATE_NONE) {
+        		accentStateClear();
+        	} else {
+        		sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL);
+        		if (mDeleteCount > DELETE_ACCELERATE_AT) {
+        			sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL);
+        		}
+        	}
         }
     }
 
@@ -538,6 +542,13 @@ public class GreekIME extends InputMethodService
     		// so faking it, like PinyinIME does
     		mCapsShift = true;
     		return true;
+    	} else if (KeyEvent.KEYCODE_DEL == keyCode) {
+			if (mAccentShiftState != AccentState.ACCENT_STATE_NONE) {
+				accentStateClear();
+    			return true;
+			} else {
+				return false;
+			}    		
     	} else {
     		boolean caps = event.isShiftPressed() || mCapsShift;
 			int greekCode = keyCodeToChar (keyCode, caps, mAccentShiftState);
