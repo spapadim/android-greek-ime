@@ -225,12 +225,12 @@ public class GreekIME extends InputMethodService
                     mKeyboardSwitcher.setSoftKeyboardState(KeyboardSwitcher.MODE_IM,
                     		KeyboardSwitcher.LANGUAGE_EN, attribute.imeOptions);
                 }
-                updateShiftKeyState(attribute);
+                updateSoftShiftKeyState(attribute);
                 break;
             default:
                 mKeyboardSwitcher.setSoftKeyboardState(KeyboardSwitcher.MODE_TEXT,
                 		KeyboardSwitcher.LANGUAGE_EN, attribute.imeOptions);
-                updateShiftKeyState(attribute);
+                updateSoftShiftKeyState(attribute);
         }
         mInputView.closing();
         mComposing.setLength(0);
@@ -333,7 +333,7 @@ public class GreekIME extends InputMethodService
         return super.onKeyUp(keyCode, event);
     }
 
-    public void updateShiftKeyState(EditorInfo attr) {
+    private void updateSoftShiftKeyState(EditorInfo attr) {
         InputConnection ic = getCurrentInputConnection();
         if (attr != null && mInputView != null && mKeyboardSwitcher.isAlphabetMode()
                 && ic != null) {
@@ -345,7 +345,7 @@ public class GreekIME extends InputMethodService
             mInputView.setShifted(mCapsLock || caps != 0);
         }
     }
-    
+        
     private void swapPunctuationAndSpace() {
         final InputConnection ic = getCurrentInputConnection();
         if (ic == null) return;
@@ -356,7 +356,7 @@ public class GreekIME extends InputMethodService
             ic.deleteSurroundingText(2, 0);
             ic.commitText(lastTwo.charAt(1) + " ", 1);
             ic.endBatchEdit();
-            updateShiftKeyState(getCurrentInputEditorInfo());
+            updateSoftShiftKeyState(getCurrentInputEditorInfo());
         }
     }
     
@@ -435,7 +435,7 @@ public class GreekIME extends InputMethodService
         ic.beginBatchEdit();
         ic.commitText(text, 1);
         ic.endBatchEdit();
-        updateShiftKeyState(getCurrentInputEditorInfo());
+        updateSoftShiftKeyState(getCurrentInputEditorInfo());
     }
 
     private void handleBackspace() {
@@ -443,7 +443,7 @@ public class GreekIME extends InputMethodService
         InputConnection ic = getCurrentInputConnection();
         if (ic == null) return;
         deleteChar = true;
-        updateShiftKeyState(getCurrentInputEditorInfo());
+        updateSoftShiftKeyState(getCurrentInputEditorInfo());
         TextEntryState.backspace();
         if (TextEntryState.getState() == TextEntryState.STATE_UNDO_COMMIT) {
             return;
@@ -482,7 +482,7 @@ public class GreekIME extends InputMethodService
         	primaryCode = addAccent(primaryCode, mAccentShiftState);
         }
         sendKeyChar((char)primaryCode);
-        updateShiftKeyState(getCurrentInputEditorInfo());
+        updateSoftShiftKeyState(getCurrentInputEditorInfo());
         accentStateClear();
         measureCps();
         TextEntryState.typedCharacter((char) primaryCode, isWordSeparator(primaryCode));
@@ -638,7 +638,7 @@ public class GreekIME extends InputMethodService
                 && primaryCode != KEYCODE_ENTER) {
             swapPunctuationAndSpace();
         }
-        updateShiftKeyState(getCurrentInputEditorInfo());
+        updateSoftShiftKeyState(getCurrentInputEditorInfo());
         accentStateClear();
         if (ic != null) {
             ic.endBatchEdit();
@@ -838,7 +838,7 @@ public class GreekIME extends InputMethodService
             ((SoftKeyboard) mInputView.getKeyboard()).setShiftLocked(mCapsLock);
         }
 
-        updateShiftKeyState(getCurrentInputEditorInfo()); // XXX - check: clearAllMetaStates ??
+        updateSoftShiftKeyState(getCurrentInputEditorInfo()); // XXX - check: clearAllMetaStates ??
         showStatusIcon(mKeyboardSwitcher.getLanguageIcon());
     }
     
@@ -848,7 +848,7 @@ public class GreekIME extends InputMethodService
             ((SoftKeyboard) mInputView.getKeyboard()).setShiftLocked(mCapsLock);
         }
 
-        updateShiftKeyState(getCurrentInputEditorInfo());
+        updateSoftShiftKeyState(getCurrentInputEditorInfo());
     }
     
     @Override protected void dump(FileDescriptor fd, PrintWriter fout, String[] args) {

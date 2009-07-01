@@ -2,7 +2,7 @@
         package="net.bitquill.inputmethod.greek" android:versionName="0.2.1" android:versionCode="4">
     <uses-permission android:name="android.permission.VIBRATE"/>
 
-    <application android:label="@string/greek_ime_name" android:icon="@drawable/icon" android:debuggable="true">
+    <application android:label="@string/greek_ime_name" android:icon="@drawable/icon" android:debuggable="false">
         <service android:name="GreekIME"
                 android:label="@string/greek_ime_name"
                 android:permission="android.permission.BIND_INPUT_METHOD" android:icon="@drawable/icon">
