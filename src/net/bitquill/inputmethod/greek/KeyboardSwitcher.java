@@ -244,6 +244,8 @@ public class KeyboardSwitcher {
     	} else {
     		mLanguage = LANGUAGE_EN;
     	}
-    	setSoftKeyboardState(mMode, mLanguage, mImeOptions);
+    	if (mInputView != null) {
+    		setSoftKeyboardState(mMode, mLanguage, mImeOptions);
+    	}
     }
 }

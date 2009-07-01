@@ -90,6 +90,7 @@ public class GreekIME extends InputMethodService
     private AlertDialog mOptionsDialog;
     
     KeyboardSwitcher mKeyboardSwitcher;
+    HardKeyboardState mHardKeyboard;
     
     private StringBuilder mComposing = new StringBuilder();
     private WordComposer mWord = new WordComposer();
@@ -104,13 +105,13 @@ public class GreekIME extends InputMethodService
     private int mDeleteCount;
     private long mLastKeyTime;
     
-    public static enum AccentState { 
-    	ACCENT_STATE_NONE, ACCENT_STATE_ACUTE, ACCENT_STATE_DIAERESIS, ACCENT_STATE_BOTH 
-    };
+    private static final int ACCENT_STATE_NONE = 0;
+    private static final int ACCENT_STATE_ACUTE = 1;
+    private static final int ACCENT_STATE_DIAERESIS = 2;
+    private static final int ACCENT_STATE_BOTH = 3; 
     
     private boolean mIMMode;
-    private AccentState mAccentShiftState;
-    private boolean mCapsShift;
+    private int mAccentShiftState;
     
     private Vibrator mVibrator;
     private long mVibrateDuration;
@@ -128,6 +129,7 @@ public class GreekIME extends InputMethodService
         super.onCreate();
         //setStatusIcon(R.drawable.ime_qwerty);
         mKeyboardSwitcher = new KeyboardSwitcher(this);
+        mHardKeyboard = new HardKeyboardState(this);
         
         mVibrateDuration = getResources().getInteger(R.integer.vibrate_duration_ms);
         
@@ -137,16 +139,19 @@ public class GreekIME extends InputMethodService
         
         mWordSeparators = getResources().getString(R.string.word_separators);
         mSentenceSeparators = getResources().getString(R.string.sentence_separators);
+        if (TRACE) Debug.startMethodTracing("greekime");
     }    
     
     @Override public void onDestroy() {
         unregisterReceiver(mReceiver);
+        if (TRACE) Debug.stopMethodTracing();
         super.onDestroy();
     }
     
     @Override
 	public void onConfigurationChanged(Configuration config) {
 		super.onConfigurationChanged(config);
+		mHardKeyboard.clearAllMetaStates();
 	    mHasVisibleHardwareKeyboard = config.keyboard != Configuration.KEYBOARD_NOKEYS
         	&& config.hardKeyboardHidden != Configuration.HARDKEYBOARDHIDDEN_YES;
 	}
@@ -167,9 +172,9 @@ public class GreekIME extends InputMethodService
 	public void onStartInput(EditorInfo attribute, boolean restarting) {
     	showStatusIcon(mKeyboardSwitcher.getLanguageIcon());
     	loadSettings();
+    	mHardKeyboard.clearAllMetaStates();
     	mIMMode = ((attribute.inputType & EditorInfo.TYPE_MASK_CLASS) == EditorInfo.TYPE_CLASS_TEXT)
     		&& ((attribute.inputType & EditorInfo.TYPE_MASK_VARIATION) == EditorInfo.TYPE_TEXT_VARIATION_SHORT_MESSAGE);
-        if (TRACE) Debug.startMethodTracing("greekime");
 		//super.onStartInput(attribute, restarting);  // XXX - check
 	}
 
@@ -186,8 +191,7 @@ public class GreekIME extends InputMethodService
         TextEntryState.newSession(this);
         
         mCapsLock = false;
-        mAccentShiftState = AccentState.ACCENT_STATE_NONE;
-        mCapsShift = false;
+        mAccentShiftState = ACCENT_STATE_NONE;
         switch (attribute.inputType & EditorInfo.TYPE_MASK_CLASS) {
             case EditorInfo.TYPE_CLASS_NUMBER:
             case EditorInfo.TYPE_CLASS_DATETIME:
@@ -246,8 +250,17 @@ public class GreekIME extends InputMethodService
     }
 
     @Override
+	public boolean onEvaluateInputViewShown() { // XXX
+    	// This is really a kludge, but it's the only place I found to clear
+    	// the hardware keyboard meta states when the editor focus is lost 
+    	// and then regained, so that the tracked meta states match
+    	// the cursor caret indicator.
+    	mHardKeyboard.clearAllMetaStates();
+		return super.onEvaluateInputViewShown();
+	}
+
+	@Override
     public void hideWindow() {
-        if (TRACE) Debug.stopMethodTracing();
         if (mOptionsDialog != null && mOptionsDialog.isShowing()) {
             mOptionsDialog.dismiss();
             mOptionsDialog = null;
@@ -286,12 +299,7 @@ public class GreekIME extends InputMethodService
     	// SHIFT-SPACE is used to switch between Greek and English
         if (KeyEvent.KEYCODE_SPACE == keyCode && event.isShiftPressed()) {
         	changeKeyboardLanguage();
-        	mCapsShift = false;
-            int allMetaStates = KeyEvent.META_ALT_ON | KeyEvent.META_ALT_LEFT_ON
-            	| KeyEvent.META_ALT_RIGHT_ON | KeyEvent.META_SHIFT_ON
-            	| KeyEvent.META_SHIFT_LEFT_ON
-            	| KeyEvent.META_SHIFT_RIGHT_ON | KeyEvent.META_SYM_ON;
-            getCurrentInputConnection().clearMetaKeyStates(allMetaStates);  // from PinyinIME
+        	mHardKeyboard.updateMetaStateAfterKeypress(HardKeyboardState.META_SHIFT, true);
         	return true;
         }
         // Do translation into Greek if necessary
@@ -440,7 +448,7 @@ public class GreekIME extends InputMethodService
         if (TextEntryState.getState() == TextEntryState.STATE_UNDO_COMMIT) {
             return;
         } else if (deleteChar) {
-        	if (mAccentShiftState != AccentState.ACCENT_STATE_NONE) {
+        	if (mAccentShiftState != ACCENT_STATE_NONE) {
         		accentStateClear();
         	} else {
         		sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL);
@@ -452,7 +460,7 @@ public class GreekIME extends InputMethodService
     }
     
     private boolean isAccentShifted () {
-    	return (mAccentShiftState != AccentState.ACCENT_STATE_NONE)
+    	return (mAccentShiftState != ACCENT_STATE_NONE)
     	    && (mKeyboardSwitcher.getKeyboardLanguage() == KeyboardSwitcher.LANGUAGE_EL);
     }
     
@@ -487,19 +495,19 @@ public class GreekIME extends InputMethodService
     	InputConnection ic = getCurrentInputConnection();
     	switch (mAccentShiftState) {
     	case ACCENT_STATE_NONE:
-    		mAccentShiftState = AccentState.ACCENT_STATE_ACUTE;
+    		mAccentShiftState = ACCENT_STATE_ACUTE;
     		ic.setComposingText("\u0384", 1);
     		break;
     	case ACCENT_STATE_ACUTE:
-    		mAccentShiftState = AccentState.ACCENT_STATE_DIAERESIS;
+    		mAccentShiftState = ACCENT_STATE_DIAERESIS;
     		ic.setComposingText("\u00a8", 1);
     		break;
     	case ACCENT_STATE_DIAERESIS:
-    		mAccentShiftState = AccentState.ACCENT_STATE_BOTH;
+    		mAccentShiftState = ACCENT_STATE_BOTH;
     		ic.setComposingText("\u0385", 1);
     		break;
     	default:
-    		mAccentShiftState = AccentState.ACCENT_STATE_NONE;
+    		mAccentShiftState = ACCENT_STATE_NONE;
     		ic.setComposingText("", 1);
     		break;
     	}
@@ -507,7 +515,7 @@ public class GreekIME extends InputMethodService
     
     private void accentStateClear () {
     	InputConnection ic = getCurrentInputConnection();
-    	mAccentShiftState = AccentState.ACCENT_STATE_NONE;
+    	mAccentShiftState = ACCENT_STATE_NONE;
     	if (ic != null) {  // XXX - why should we have to check?
     		ic.setComposingText("", 1);
     	}
@@ -518,7 +526,7 @@ public class GreekIME extends InputMethodService
      * @param code  Unicode character code
      * @return      Corresponding accented character; returns code itself if character cannot be accented
      */
-    private int addAccent (int code, AccentState accentState) {
+    private int addAccent (int code, int accentState) {
     	switch (accentState) {
     	case ACCENT_STATE_NONE:
     		return code;
@@ -540,14 +548,14 @@ public class GreekIME extends InputMethodService
      * @param accented  Whether character should have an acute accent or not
      * @return          Corresponding character code, or -1 if none exists (no translation)
      */
-    private int keyCodeToChar (int keyCode, boolean upperCase, AccentState accentState) {
+    private int keyCodeToChar (int keyCode, boolean upperCase, int accentState) {
         int code;
         if (mIMMode && mSMS7bitMode) {
         	code = sSMSKeyCodeTable.get(keyCode, -1);
         } else {
         	code = sKeyCodeTable.get(keyCode, -1);
         } 
-        if (accentState != AccentState.ACCENT_STATE_NONE) {
+        if (accentState != ACCENT_STATE_NONE) {
         	code = addAccent(code, accentState);
         }
         if (upperCase) {
@@ -567,33 +575,50 @@ public class GreekIME extends InputMethodService
     			|| KeyEvent.KEYCODE_SHIFT_RIGHT == keyCode) {
     		// FIXME - Cannot figure out how to access hardware keyboard caps state,
     		// so faking it, like PinyinIME does
-    		mCapsShift = true;
+    		mHardKeyboard.shiftMetaState(HardKeyboardState.META_SHIFT);
+    		return false;
+    	} else if (KeyEvent.KEYCODE_ALT_LEFT == keyCode
+    			|| KeyEvent.KEYCODE_ALT_RIGHT == keyCode) {
+    		mHardKeyboard.shiftMetaState(HardKeyboardState.META_ALT);
+    		return false;
+    	} else if (KeyEvent.KEYCODE_SYM == keyCode) {
+    		// TODO
     		return true;
     	} else if (KeyEvent.KEYCODE_DEL == keyCode) {
-			if (mAccentShiftState != AccentState.ACCENT_STATE_NONE) {
+    		boolean consume;
+			if (mAccentShiftState != ACCENT_STATE_NONE) {
 				accentStateClear();
-    			return true;
+				consume = true;
 			} else {
-				return false;
-			}    		
-    	} else {
-    		boolean caps = event.isShiftPressed() || mCapsShift;
-			int greekCode = keyCodeToChar (keyCode, caps, mAccentShiftState);
-			if (isWordSeparator(greekCode)) {
-				finalizeSigma();
+				consume = false;
 			}
-			mCapsShift = false;
-    		if (greekCode >= 0) {
-    			sendKeyChar((char)greekCode);
-    			accentStateClear();
-    			return true;
-    		} else if (greekCode == SoftKeyboard.KEYCODE_ACCENT) {
-    			accentStateShift();
-    			return true;
-    		} else {
-    			accentStateClear(); // XXX - check?
+			mHardKeyboard.updateAllMetaStatesAfterKeypress(consume);
+			return consume;
+    	} else {
+    		if (mHardKeyboard.isMetaOn(HardKeyboardState.META_ALT)) {
+    			mHardKeyboard.updateMetaStateAfterKeypress(HardKeyboardState.META_ALT, false);
     			return false;
-    		}
+    		} else {
+    			boolean caps = event.isShiftPressed() || mHardKeyboard.isMetaOn(HardKeyboardState.META_SHIFT);
+				int greekCode = keyCodeToChar (keyCode, caps, mAccentShiftState);
+				if (isWordSeparator(greekCode)) {
+					finalizeSigma();
+				}
+				boolean consume;
+				if (greekCode >= 0) {
+					sendKeyChar((char)greekCode);
+					accentStateClear();
+					consume = true;
+				} else if (greekCode == SoftKeyboard.KEYCODE_ACCENT) {
+					accentStateShift();
+					consume = true;
+				} else {
+					accentStateClear(); // XXX - check?
+					consume = false;
+				}
+				mHardKeyboard.updateMetaStateAfterKeypress(HardKeyboardState.META_SHIFT, consume);
+				return consume;
+			}
     	}
     }
 
@@ -807,12 +832,13 @@ public class GreekIME extends InputMethodService
     private void changeKeyboardLanguage() {
     	mKeyboardSwitcher.toggleLanguage();
     	accentStateClear();
+    	mHardKeyboard.clearAllMetaStates();
     	// XXX - Following code copied blindly from changeKeyboardSymbols (from LatinIME)
         if (mCapsLock && mKeyboardSwitcher.isAlphabetMode()) {
             ((SoftKeyboard) mInputView.getKeyboard()).setShiftLocked(mCapsLock);
         }
 
-        updateShiftKeyState(getCurrentInputEditorInfo());
+        updateShiftKeyState(getCurrentInputEditorInfo()); // XXX - check: clearAllMetaStates ??
         showStatusIcon(mKeyboardSwitcher.getLanguageIcon());
     }
     
