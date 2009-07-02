@@ -1,6 +1,7 @@
 package net.bitquill.inputmethod.greek;
 
 import android.view.KeyEvent;
+import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 
 /**

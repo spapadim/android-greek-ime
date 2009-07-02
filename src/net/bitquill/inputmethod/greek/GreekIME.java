@@ -332,18 +332,38 @@ public class GreekIME extends InputMethodService
         }
         return super.onKeyUp(keyCode, event);
     }
-
-    private void updateSoftShiftKeyState(EditorInfo attr) {
+    
+    private int getCursorCapsMode () {
+		int cursorCaps = 0;
         InputConnection ic = getCurrentInputConnection();
-        if (attr != null && mInputView != null && mKeyboardSwitcher.isAlphabetMode()
-                && ic != null) {
-            int caps = 0;
+        if (ic != null) {
             EditorInfo ei = getCurrentInputEditorInfo();
-            if (mAutoCap && ei != null && ei.inputType != EditorInfo.TYPE_NULL) {
-                caps = ic.getCursorCapsMode(attr.inputType);
+            if (ei != null && ei.inputType != EditorInfo.TYPE_NULL) {
+                cursorCaps = ic.getCursorCapsMode(ei.inputType);
             }
-            mInputView.setShifted(mCapsLock || caps != 0);
         }
+        return cursorCaps;
+    }
+
+    // XXX - original version, from LatinIME (see questions below)
+//    private void updateSoftShiftKeyState(EditorInfo attr) {
+//        InputConnection ic = getCurrentInputConnection();
+//        if (attr != null && mInputView != null && mKeyboardSwitcher.isAlphabetMode()
+//                && ic != null) {
+//            int caps = 0;
+//            EditorInfo ei = getCurrentInputEditorInfo();  // XXX - why not use attr ?
+//            if (mAutoCap && ei != null && ei.inputType != EditorInfo.TYPE_NULL) {
+//                caps = ic.getCursorCapsMode(attr.inputType);  // XXX - why use attr, not ei
+//            }
+//            mInputView.setShifted(mCapsLock || caps != 0);
+//        }
+//    }
+    
+    private void updateSoftShiftKeyState (EditorInfo attr) {
+    	if (attr != null && mInputView != null && mKeyboardSwitcher.isAlphabetMode()) {
+    		int caps = getCursorCapsMode();
+    		mInputView.setShifted(mCapsLock || (mAutoCap && (caps != 0)));
+    	}
     }
         
     private void swapPunctuationAndSpace() {
@@ -600,7 +620,8 @@ public class GreekIME extends InputMethodService
     			mHardKeyboard.updateMetaStateAfterKeypress(HardKeyboardState.META_ALT, false);
     			return false;
     		} else {
-    			boolean caps = event.isShiftPressed() || mHardKeyboard.isMetaOn(HardKeyboardState.META_SHIFT);
+    			boolean caps = event.isShiftPressed() || mHardKeyboard.isMetaOn(HardKeyboardState.META_SHIFT)
+    				|| getCursorCapsMode() != 0;
 				int greekCode = keyCodeToChar (keyCode, caps, mAccentShiftState);
 				if (isWordSeparator(greekCode)) {
 					finalizeSigma();
