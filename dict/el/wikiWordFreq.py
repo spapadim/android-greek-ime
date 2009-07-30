@@ -1,3 +1,5 @@
+#! /usr/bin/env python
+
 import sys
 import bz2
 import xml.sax
@@ -81,7 +83,7 @@ _wikimacro_re = re.compile(r'{{[^}]+}}')
 _html_re = re.compile(r'</?[^>]+>|&[^;]+;|<!--.+?-->')
 _ignore_chars_re = re.compile(r'[a-zA-Z0-9.,;:_?!\'"(){}\[\]|/#&%|~+=$*@<>\-]')
 
-_progress_interval = 5  # Update progress message every so many word
+_progress_interval = 10  # Update progress message every so many word
 
 def _wikiReplace (match):
     namespace = match.group(1)
@@ -238,7 +240,7 @@ def main ():
     fp.close()
     
     # Write out final dictionary
-    fp = open(outFilename, 'w')
+    fp = codecs.open(outFilename, 'w', 'utf8')
     writeSortedDict(fp, dict)
     fp.close()
     
