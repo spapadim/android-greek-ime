@@ -5,13 +5,13 @@ import re
 import getopt
 import codecs
 import time
+import aspell
 
 logfp = sys.stderr
 
-_wikilink_re = re.compile(r'\[\[(:?(?:[^:|\]]+:)+)?([^|\]]+\|)?([^\]]*)\]\]') # FIXME multi-colon
-_wikimacro_re = re.compile(r'{{[^}]+}}')
-_html_re = re.compile(r'</?[^>]+>|&[^;]+;|<!--.+?-->')
-_ignore_chars_re = re.compile(r'[a-zA-Z0-9.,;:_?!\'"(){}\[\]|/#&%|~+=$*@<>\-]')
+################################################################
+# Histogram word handlers
+################################################################
 
 # Map from accented to unaccented characters; lowercase only
 _accent_table = {0x03ac : 0x03b1,  # alpha acute
@@ -30,51 +30,58 @@ def greekNormalize (s):
     """Return normalized representation: all-lowercase with no accents"""
     return s.lower().translate(_accent_table)
 
-_progress_interval = 500  # Update progress message every so many word
+class WordHandler:
+    def onWord (self, word):
+        raise RuntimeError("Unimplemented abstract method")
 
-class GreekWordHistogram:
-    """Stores histogram of Greek words.  Keys are normalized representations,
-    values are two-element lists.  First element is a set of non-normalized
-    representations and second element is aggregate count for all of them."""
-    def __init__ (self):
-        self.hist = {}
+class HistogramWordHandler (WordHandler):
+    def __init__ (self, dict):
+        self.dict = dict
+        self._makeNormal()
     
-    def __len__ (self):
-        return len(self.hist)
-
-    def __getitem__ (self, key):
-        """Return corresponding count of normalized representation"""
-        return self.hist[greekNormalize(key)][1]
-    
-    def get (self, key, default=None):
-        normKey = greekNormalize(key)
-        if self.hist.has_key(normKey):
-            return self.hist[normKey][1]
-        else:
-            return default
-    
-    def increment (self, key):
-        normKey = greekNormalize(key)
-        if not self.hist.has_key(normKey):
-            self.hist[normKey] = [set(), 0]
-        data = self.hist[normKey]
-        data[0].add(key)
-        data[1] += 1
-    
-    def __iter__ (self):
-        return self.hist.iterkeys()
-    
-    iterkeys = __iter__
-
-    def __contains__ (self, key):
-        return self.hist.has_key(greekNormalize(key))
-    
-    def dump (self, fp):
+    def _makeNormal (self):
         startTime = time.time()
-        for normKey in self.hist:
-            rawKeys, count = self.hist[normKey]
-            print >>fp, '%s\t%d\t%s' % (normKey, count, '\t'.join(rawKeys))
-        print >>logfp, "Dumped %d words from Wikipedia in %.1f sec" % (len(self.hist), time.time() - startTime)
+        self._normMap = {}
+        for word in self.dict:
+            normWord = greekNormalize(word)
+            if normWord not in self._normMap:
+                self._normMap[normWord] = set()
+            self._normMap[normWord].add(word)
+        print >>logfp, "Finished normalization in %.1f sec" % (time.time() - startTime)
+    
+    def onWord (self, word):
+        normWord = greekNormalize(word)
+        if normWord not in self._normMap:
+            return  # Ignore
+        for word in self._normMap[normWord]:
+            self.dict[word] += 1
+
+class AspellWordHandler (WordHandler):
+    def __init__ (self, dict):
+        self.dict = dict
+        self.spell = aspell.aspell()
+    
+    def onWord (self, word):
+        #print >>logfp, "onWord:", word
+        suggest = self.spell.check(word)
+        if suggest != None and len(suggest) > 0:
+            word = suggest[0]
+        if word in self.dict:
+            self.dict[word] += 1
+    
+    def __del__ (self):
+        del self.spell  # XXX is this necessary?
+
+################################################################
+# Wikipedia XML dump parsing
+################################################################
+
+_wikilink_re = re.compile(r'\[\[(:?(?:[^:|\]]+:)+)?([^|\]]+\|)?([^\]]*)\]\]') # FIXME multi-colon
+_wikimacro_re = re.compile(r'{{[^}]+}}')
+_html_re = re.compile(r'</?[^>]+>|&[^;]+;|<!--.+?-->')
+_ignore_chars_re = re.compile(r'[a-zA-Z0-9.,;:_?!\'"(){}\[\]|/#&%|~+=$*@<>\-]')
+
+_progress_interval = 5  # Update progress message every so many word
 
 def _wikiReplace (match):
     namespace = match.group(1)
@@ -93,23 +100,24 @@ def stripWikiMarkup (text):
     text = _wikilink_re.sub(_wikiReplace, text)
     # Strip English characters, numbers and punctuation
     text = _ignore_chars_re.sub(' ', text)
-    return text    
+    return text
 
 class StopParsingException (Exception):
     pass
 
-class WikiHandler (xml.sax.ContentHandler):
-    def __init__ (self, hist):
-        self.hist = hist
+class WikiParseHandler (xml.sax.ContentHandler):
+    def __init__ (self, wordHandler, limit = sys.maxint):
+        self.wordHandler = wordHandler
         self.cdata = ''
         self.inTextElement = False
         self.count = 0
+        self.limit = limit
         
     def startDocument (self):
         print >>logfp, "Parsing:         0 articles",
     
     def endDocument (self):
-        print >>logfp, "\n"
+        print >>logfp, ''
 
     def startElement (self, name, attrs):
         if name != 'text':
@@ -121,22 +129,56 @@ class WikiHandler (xml.sax.ContentHandler):
             return
         self.inTextElement = False
         self.count += 1
+        if self.count >= self.limit:
+            print >>logfp, ''
+            raise StopParsingException()
         if self.count % _progress_interval == 0:
             print >>logfp, "\b"*20,
             print >>logfp, "%9d articles" % self.count,
-        if self.count > 1000:  # TODO
-            raise StopParsingException()
         for word in stripWikiMarkup(self.cdata).split():
-            self.hist.increment(word)
+            self.wordHandler.onWord(word)
         self.cdata = ''
     
     def characters (self, content):
         if self.inTextElement:
             self.cdata += content
 
+def parseWikipediaDump (fp, wordHandler, limit = sys.maxint):
+    startTime = time.time()
+    parseHandler = WikiParseHandler(wordHandler, limit)
+    try:
+        xml.sax.parse(fp, parseHandler)
+    except StopParsingException:
+        pass
+    print >>logfp, "Processed %d articles in %.1f sec" % (parseHandler.count, time.time() - startTime)
+
+################################################################
+# Dictionary I/O
+################################################################
+
+def loadDict (fp, default = 0):
+    """Load a Unix-style dictionary (one word per line) into a dictionary.
+    Words are dictionary keys. Values are all initialized to the default"""
+    startTime = time.time()
+    dict = {}
+    for l in fp:
+        dict[l.strip()] = default
+    print >>logfp, "Loaded %d words in %.1f sec" % (len(dict), time.time() - startTime)
+    return dict
+
+def writeSortedDict (fp, dict):
+    """Write dictionary in frequency-sorted order"""
+    startTime = time.time()
+    for word in sorted(dict, key=(lambda w: dict[w]), reverse=True):
+        print >>fp, "%s\t%d" % (word, dict[word])
+    print "Wrote sorted list in %.1f sec" % (time.time() - startTime)
+
+################################################################
+# Main
+################################################################
+
 _default_wiki_filename = 'elwiki-20090712-pages-articles.xml.bz2'
 _default_dict_filename = 'el-utf8.txt'
-_default_dump_filename = 'wiki_hist.txt'
 _default_out_filename = 'words_hist.txt'
 
 def printUsageAndExit ():
@@ -152,57 +194,25 @@ def printUsageAndExit ():
     print >>sys.stderr, '  -h|--help  Print this usage information and exit'  
     sys.exit(0)
 
-def parseWikipediaDump (fp):
-    startTime = time.time()
-    hist = GreekWordHistogram()
-    handler = WikiHandler(hist)
-    try:
-        xml.sax.parse(fp, handler)
-    except StopParsingException:
-        pass
-    print >>logfp, "Processed %d articles in %.1f sec" % (handler.count, time.time() - startTime)
-    return hist
-
-def loadDict (fp, default=0):
-    """Load a Unix-style dictionary (one word per line) into a dictionary.
-    Words are dictionary keys. Values are all initialized to the default"""
-    startTime = time.time()
-    dict = {}
-    for l in fp:
-        dict[l.strip()] = default
-    print >>logfp, "Loaded %d words in %.1f sec" % (len(dict), time.time() - startTime)
-    return dict
-
-def crossReference (dict, hist):
-    """Augment histogram with word frequencies, by cross-referencing with Wikipedia histogram"""
-    startTime = time.time()
-    for word in dict:
-        dict[word] = hist.get(word, 0)
-    print >>logfp, "Cross-referenced %d words in %.1f sec" % (len(dict), time.time() - startTime)
-
-def writeSortedDict (fp, dict):
-    """Write dictionary in frequency-sorted order"""
-    startTime = time.time()
-    for word in sorted(dict, key=(lambda w: dict[w]), reverse=True):
-        print >>fp, "%s\t%d" % (word, dict[word])
-    print "Wrote sorted list in %.1f sec" % (time.time() - startTime)
-
 def main ():
-    opts, args = getopt.getopt(sys.argv[1:], 'hw:d:u:o:', 
-                               ['help', 'wiki=', 'dict=', 'dump=', 'out='])
+    opts, args = getopt.getopt(sys.argv[1:], 'hsw:d:o:l:', 
+                               ['help', 'smart', 'wiki=', 'dict=', 'out=', 'limit='])
     wikiFilename = _default_wiki_filename
     dictFilename = _default_dict_filename
-    dumpFilename = _default_dump_filename
     outFilename = _default_out_filename
+    aspellMode = False
+    articleLimit = sys.maxint
     for opt, arg in opts:
         if opt == '-h' or opt == '--help':
             printUsageAndExit()
+        elif opt == '-s' or opt == '--smart':
+            aspellMode = True  # Use aspell, instead of normalized representation
+        elif opt == '-l' or opt == '--limit':
+            articleLimit = int(arg)
         elif opt == '-w' or opt == '--wiki':
             wikiFilename = arg
         elif opt == '-d' or opt == '--dict':
             dictFilename = arg
-        elif opt == '-u' or opt == '--dump':
-            dumpFilename = arg
         elif opt == '-o' or opt == '--out':
             outFilename = arg
         else:
@@ -221,18 +231,11 @@ def main ():
 
     # Parse Wikipedia article dump file to obtain word histogram
     fp = bz2.BZ2File(wikiFilename, 'r')
-    hist = parseWikipediaDump(fp)
+    if aspellMode:
+        parseWikipediaDump(fp, AspellWordHandler(dict), articleLimit)
+    else:
+        parseWikipediaDump(fp, HistogramWordHandler(dict), articleLimit)
     fp.close()
-    
-    # Dump raw Wikipedia histogram (backup)
-    fp = open(dumpFilename, 'w')
-    hist.dump(fp)
-    fp.close()
-    
-    # Augment proper dictionary with corresponding frequencies, if found
-    # The Wikipedia corpus may contain several typos or improper words,
-    # so we clean up by cross-referencing with a proper dictionary
-    crossReference (dict, hist)
     
     # Write out final dictionary
     fp = open(outFilename, 'w')
