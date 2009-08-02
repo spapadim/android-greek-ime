@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2008-2009 Google Inc.
+ * Copyright (C) 2009 Spiros Papadimitriou <spapadim@cs.cmu.edu>
  * 
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
@@ -32,12 +33,15 @@ import java.util.List;
  * @hide pending API Council Approval
  */
 public class Suggest implements Dictionary.WordCallback {
+    private static final String TAG = "Suggest";
 
     public static final int CORRECTION_NONE = 0;
     public static final int CORRECTION_BASIC = 1;
     public static final int CORRECTION_FULL = 2;
     
-    private Dictionary mMainDict;
+    private Dictionary mGreekDict;
+    private Dictionary mEnglishDict;  // may be null, since system does not guarantee it's presence
+    private Dictionary mActiveDict;
     
     private Dictionary mUserDictionary;
     
@@ -57,7 +61,17 @@ public class Suggest implements Dictionary.WordCallback {
 
     public Suggest(Context context) {
         mContext = context;
-        mMainDict = new GreekBinaryDictionary(context);
+        
+        mGreekDict = new GreekBinaryDictionary(context);
+        Log.i(TAG, "Loaded Greek dictionary");
+        try {
+            mEnglishDict = new EnglishBinaryDictionary(context);
+            Log.i(TAG, "Loaded English dictionary");
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to load English dictionary");
+        }
+        setDictionaryLanguage(KeyboardSwitcher.LANGUAGE_EN);
+        
         for (int i = 0; i < mPrefMaxSuggestions; i++) {
             StringBuilder sb = new StringBuilder(32);
             mStringPool.add(sb);
@@ -70,6 +84,21 @@ public class Suggest implements Dictionary.WordCallback {
     
     public void setCorrectionMode(int mode) {
         mCorrectionMode = mode;
+    }
+    
+    public void setDictionaryLanguage (int language) {
+        switch (language) {
+        case KeyboardSwitcher.LANGUAGE_EL:
+            mActiveDict = mGreekDict;
+            break;
+        case KeyboardSwitcher.LANGUAGE_EN:
+            mActiveDict = mEnglishDict != null ? mEnglishDict : mGreekDict;
+            break;
+        default:
+            Log.e(TAG, "Invalid language, reverting to greek dictionary");
+            mActiveDict = mGreekDict; 
+            break;
+        }
     }
 
     /**
@@ -148,7 +177,7 @@ public class Suggest implements Dictionary.WordCallback {
                     mHaveCorrection = true;
                 }
             }
-            mMainDict.getWords(wordComposer, this);
+            mActiveDict.getWords(wordComposer, this);
             if (mCorrectionMode == CORRECTION_FULL && mSuggestions.size() > 0) {
                 mHaveCorrection = true;
             }
@@ -254,7 +283,7 @@ public class Suggest implements Dictionary.WordCallback {
         if (word == null || word.length() == 0) {
             return false;
         }
-        return (mCorrectionMode == CORRECTION_FULL && mMainDict.isValidWord(word)) 
+        return (mCorrectionMode == CORRECTION_FULL && mActiveDict.isValidWord(word)) 
                 || (mCorrectionMode > CORRECTION_NONE && 
                     (mUserDictionary != null && mUserDictionary.isValidWord(word)));
     }

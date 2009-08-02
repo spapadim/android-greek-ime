@@ -737,7 +737,8 @@ public class GreekIME extends InputMethodService
         if (isAccentShifted()) {
         	primaryCode = addAccent(primaryCode, mAccentShiftState);
         }
-
+        accentStateClear();
+        
         // XXX check patch
         if (mPredicting) {
             if (mInputView.isShifted() && mComposing.length() == 0) {
@@ -755,7 +756,6 @@ public class GreekIME extends InputMethodService
         }
 
         updateSoftShiftKeyState(getCurrentInputEditorInfo());
-        accentStateClear();  // XXX check patch
         measureCps();
         TextEntryState.typedCharacter((char) primaryCode, isWordSeparator(primaryCode));
     }
@@ -765,32 +765,53 @@ public class GreekIME extends InputMethodService
      */
     private void accentStateShift () {
     	InputConnection ic = getCurrentInputConnection();
+    	char composingChar = 0;
+    	int prevAccentShiftState = mAccentShiftState;
     	switch (mAccentShiftState) {
     	case ACCENT_STATE_NONE:
     		mAccentShiftState = ACCENT_STATE_ACUTE;
-    		ic.setComposingText("\u0384", 1);
+    		composingChar = '\u0384';
     		break;
     	case ACCENT_STATE_ACUTE:
     		mAccentShiftState = ACCENT_STATE_DIAERESIS;
-    		ic.setComposingText("\u00a8", 1);
+    		composingChar = '\u00a8';
     		break;
     	case ACCENT_STATE_DIAERESIS:
     		mAccentShiftState = ACCENT_STATE_BOTH;
-    		ic.setComposingText("\u0385", 1);
+    		composingChar = '\u0385';
     		break;
     	default:
     		mAccentShiftState = ACCENT_STATE_NONE;
-    		ic.setComposingText("", 1);
+    		composingChar = 0;
     		break;
+    	}
+
+    	if (mPredicting) {
+    	    StringBuilder composing = mComposing;
+    	    int length = composing.length();
+    	    if (prevAccentShiftState != ACCENT_STATE_NONE && length > 0) {
+    	        composing.deleteCharAt(length-1);
+    	    }
+    	    if (composingChar != 0) {
+    	        composing.append(composingChar);
+    	    }
+    	    ic.setComposingText(composing, 1);
+    	} else {
+    	    //ic.setComposingText(composingChar, 1);  // FIXME TODO
     	}
     }
     
     private void accentStateClear () {
     	InputConnection ic = getCurrentInputConnection();
-    	mAccentShiftState = ACCENT_STATE_NONE;
-    	if (ic != null) {  // XXX - why should we have to check?
-    		//ic.setComposingText("", 1);
+    	if (mPredicting && mAccentShiftState != ACCENT_STATE_NONE) {
+    	    int length = mComposing.length();
+    	    if (length > 0) {
+    	        mComposing.deleteCharAt(length-1);
+    	        ic.setComposingText(mComposing, 1);
+    	    }
     	}
+    	mAccentShiftState = ACCENT_STATE_NONE;
+    	//ic.setComposingText("", 1);  // FIXME TODO
     }
     
     /**
@@ -1291,6 +1312,7 @@ public class GreekIME extends InputMethodService
 
     private void changeKeyboardLanguage() {
     	mKeyboardSwitcher.toggleLanguage();
+    	mSuggest.setDictionaryLanguage(mKeyboardSwitcher.getKeyboardLanguage());
     	accentStateClear();
     	mHardKeyboard.clearAllMetaStates();
     	// XXX - Following code copied blindly from changeKeyboardSymbols (from LatinIME)

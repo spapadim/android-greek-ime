@@ -27,7 +27,8 @@ import android.util.Log;
  * Implements a static, compacted, binary dictionary of standard words.
  */
 public class BinaryDictionary extends Dictionary {
-
+    private static final String TAG = "BinaryDictionary";
+    
     public static final int MAX_WORD_LENGTH = 48;
     private static final int MAX_ALTERNATIVES = 16;
     private static final int MAX_WORDS = 16;
@@ -43,7 +44,7 @@ public class BinaryDictionary extends Dictionary {
         try {
             System.loadLibrary("greekim");
         } catch (UnsatisfiedLinkError ule) {
-            Log.e("BinaryDictionary", "Could not load native library greekim", ule);
+            Log.e(TAG, "Could not load native library greekim", ule);
         }
     }
 
@@ -67,9 +68,11 @@ public class BinaryDictionary extends Dictionary {
             int maxWordLength, int maxWords, int maxAlternatives);
 
     private final void loadDictionary(AssetFileDescriptor afd) {
+        long startTime = System.currentTimeMillis();
         mNativeDict = openNative(afd.getFileDescriptor(), 
                 afd.getStartOffset(), afd.getLength(),
                 TYPED_LETTER_MULTIPLIER, FULL_WORD_FREQ_MULTIPLIER);
+        Log.i(TAG, "Loaded dictionary in " + (System.currentTimeMillis() - startTime) + "msec");
     }
 
     @Override
