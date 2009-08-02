@@ -168,11 +168,16 @@ def loadDict (fp, default = 0):
     print >>logfp, "Loaded %d words in %.1f sec" % (len(dict), time.time() - startTime)
     return dict
 
-def writeSortedDict (fp, dict):
+def writeSortedDict (fp, dict, scaleTo = None):
     """Write dictionary in frequency-sorted order"""
     startTime = time.time()
-    for word in sorted(dict, key=(lambda w: dict[w]), reverse=True):
-        print >>fp, "%s\t%d" % (word, dict[word])
+    freqSortedWords = sorted(dict, key=(lambda w: dict[w]), reverse=True)
+    maxFreq = dict[freqSortedWords[0]]
+    if scaleTo is None:
+        scaleTo = maxFreq
+    scaleFactor = float(scaleTo)/float(maxFreq)
+    for word in freqSortedWords:
+        print >>fp, "%s\t%d\t%d" % (word, int(round(dict[word]*scaleFactor)), dict[word])
     print "Wrote sorted list in %.1f sec" % (time.time() - startTime)
 
 ################################################################
@@ -182,6 +187,7 @@ def writeSortedDict (fp, dict):
 _default_wiki_filename = 'elwiki-20090712-pages-articles.xml.bz2'
 _default_dict_filename = 'el-utf8.txt'
 _default_out_filename = 'words_hist.txt'
+_default_scale = 255
 
 def printUsageAndExit ():
     print >>sys.stderr, 'Usage: %s [-w|--wiki file] [-d|--dict file]' % sys.argv[0]
@@ -189,19 +195,22 @@ def printUsageAndExit ():
     print >>sys.stderr, '               (default: %s)' % _default_wiki_filename
     print >>sys.stderr, '  -d|--dict  Unix dictionary list (UTF textfile)'
     print >>sys.stderr, '               (default: %s)' % _default_dict_filename
-    print >>sys.stderr, '  -u|--dump  Wikipedia histogram dump filename'
-    print >>sys.stderr, '               (default: %s)' % _default_dump_filename
     print >>sys.stderr, '  -o|--out   Dictinary histogram output filename'
     print >>sys.stderr, '               (default: %s)' % _default_out_filename
+    print >>sys.stderr, '  -x|--scale Scale to specified maximum count'
+    print >>sys.stderr, '               (default: %d)' % _default_scale
+    print >>sys.stderr, '  -s|--smart Use aspell rather than simple normalization'
+    print >>sys.stderr, '  -l|--limit Stop after processing given number of articles'
     print >>sys.stderr, '  -h|--help  Print this usage information and exit'  
     sys.exit(0)
 
 def main ():
-    opts, args = getopt.getopt(sys.argv[1:], 'hsw:d:o:l:', 
-                               ['help', 'smart', 'wiki=', 'dict=', 'out=', 'limit='])
+    opts, args = getopt.getopt(sys.argv[1:], 'hsw:d:o:l:x:', 
+                               ['help', 'smart', 'wiki=', 'dict=', 'out=', 'limit=', 'scale='])
     wikiFilename = _default_wiki_filename
     dictFilename = _default_dict_filename
     outFilename = _default_out_filename
+    scaleTo = _default_scale
     aspellMode = False
     articleLimit = sys.maxint
     for opt, arg in opts:
@@ -217,6 +226,8 @@ def main ():
             dictFilename = arg
         elif opt == '-o' or opt == '--out':
             outFilename = arg
+        elif opt == '-x' or opt == '--scale':
+            scaleTo = int(arg)
         else:
             print >>sys.stderr, 'Invalid option:', opt
             printUsageAndExit()
@@ -241,7 +252,7 @@ def main ():
     
     # Write out final dictionary
     fp = codecs.open(outFilename, 'w', 'utf8')
-    writeSortedDict(fp, dict)
+    writeSortedDict(fp, dict, scaleTo)
     fp.close()
     
     print >>logfp, "Total processing time %.1f sec" % (time.time() - startTime)

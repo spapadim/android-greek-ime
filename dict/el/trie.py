@@ -3,6 +3,7 @@
 import sys
 import getopt
 import time
+import math
 import codecs
 import struct
 
@@ -105,36 +106,95 @@ class trie:
                     fp.write(struct.pack('!BB', _FLAG_TERMINAL_MASK, freq))
         print >>logfp, 'Dumped trie in %.1f sec' % (time.time() - startTime)
 
-def loadDict (fp):
+def identity (x):
+    return x
+
+def logPlus1 (x):
+    return math.log(x + 1)
+
+_progress_interval = 100
+
+def loadDict (fp, thresh = 0, scale = 255, transform = identity):
+    print >>logfp, 'Using raw frequency threshold of %d' % thresh
     startTime = time.time()
     t = trie()
     count = skipCount = 0
+    print >>logfp, 'Loading: %6d words (%6d skipped)' % (count, skipCount),
+    scaleFactor = None
     for l in fp:
-        word, freq = l.strip().split()
-        if freq > 0:
+        word, freq, rawFreq = l.strip().split()[0:3]
+        freq = int(freq)  # ignore
+        rawFreq = int(rawFreq)
+        if scaleFactor is None:
+            # Assumes input is in descending frequency order
+            scaleFactor = float(scale)/float(transform(rawFreq))
+        freq = int(round(transform(rawFreq)*scaleFactor))
+        if freq == 0 and rawFreq > 0: 
+            freq = 1  # zero-frequency entries are never suggested
+        if rawFreq > thresh:
             t.insert(word, int(freq))
         else:
             skipCount += 1
         count += 1
-    print >>logfp, 'Processed %d words (%d ignored) in %.1f sec' % \
-        (count, skipCount, time.time() - startTime)
+        if count % _progress_interval == 0:
+            print >>logfp, '\b'*31,
+            print >>logfp, '%6d words (%6d skipped)' % (count, skipCount),
+    print >>logfp, '\nProcessed %d words (%d ignored, %d kept) in %.1f sec' % \
+        (count, skipCount, count - skipCount, time.time() - startTime)
     return t
 
+_default_thresh = 0
+_default_scale = 255
+_default_xform = identity
+
 def printUsageAndExit ():
-    print >>sys.stderr, "Usage: %s infile outfile" % sys.argv[0]
+    print >>sys.stderr, 'Usage: %s [options] infile outfile' % sys.argv[0]
+    print >>sys.stderr, ' -t|-thresh  Raw frequency threshold for pruning'
+    print >>sys.stderr, '               (default: %d)' % _default_thresh
+    print >>sys.stderr, ' --log       Logarithmic transformation'
+    print >>sys.stderr, ' --sqrt      Square root transformation'
+    print >>sys.stderr, ' --lin       Linear scaling (no transformation); default'
+    print >>sys.stderr, ' -s|-scale   Scale to this maximum value'
+    print >>sys.stderr, '               (default: %d)' % _default_scale
     sys.exit(0)
 
 def main (argv):
-    if len(sys.argv) != 3:
+    opts, args = getopt.getopt(sys.argv[1:], 'ht:s:', 
+                               ['help', 'thresh=', 'scale=', 'log', 'sqrt', 'lin'])
+    thresh = _default_thresh
+    scale = _default_scale
+    xform = _default_xform
+    for opt, arg in opts:
+        if opt == '-h' or opt == '--help':
+            printUsageAndExit()
+        elif opt == '-t' or opt == '--thresh':
+            thresh = int(arg)
+        elif opt == '-s' or opt == '--scale':
+            scale = int(arg)
+        elif opt == '--log':
+            xform = logPlus1
+        elif opt == '--sqrt':
+            xform = math.sqrt
+        elif opt == '--lin':
+            xform = identity
+        else:
+            print >>sys.stderr, 'Invalid option:', opt
+            printUsageAndExit()
+
+    if len(args) != 2:
+        print >>sys.stderr, 'Invalid number of arguments; must specify exactly two filenames'
         printUsageAndExit()
+        
+    inFilename = args[0]
+    outFilename = args[1]
     
     # Load dictionary into trie
-    fp = codecs.open(sys.argv[1], 'r', 'utf8')
-    t = loadDict(fp)
+    fp = codecs.open(inFilename, 'r', 'utf8')
+    t = loadDict(fp, thresh)
     fp.close()
     
     # Dump it in binary format
-    fp = open(sys.argv[2], 'w')
+    fp = open(outFilename, 'w')
     t.dump(fp)
     fp.close()
 
