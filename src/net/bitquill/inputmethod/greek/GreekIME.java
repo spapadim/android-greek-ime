@@ -34,9 +34,12 @@ import android.inputmethodservice.Keyboard;
 import android.inputmethodservice.KeyboardView;
 import android.media.AudioManager;
 import android.os.Debug;
+import android.os.Handler;
+import android.os.Message;
 import android.os.SystemClock;
 import android.os.Vibrator;
 import android.preference.PreferenceManager;
+import android.text.AutoText;
 import android.text.ClipboardManager;
 import android.text.TextUtils;
 import android.util.Log;
@@ -47,27 +50,36 @@ import android.view.KeyEvent;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
+import android.view.inputmethod.CompletionInfo;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputMethodManager;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Input method implementation for Qwerty'ish keyboard.
  */
 public class GreekIME extends InputMethodService 
         implements KeyboardView.OnKeyboardActionListener {
-    static final boolean DEBUG = false;
-    static final boolean TRACE = false;
+    private static final String TAG = "GreekIME"; 
+    private static final boolean DEBUG = false;
+    private static final boolean TRACE = false;
     
     private static final String PREF_VIBRATE_ON = "vibrate_on";
     private static final String PREF_SOUND_ON = "sound_on";
     private static final String PREF_AUTO_CAP = "auto_cap";
+    private static final String PREF_QUICK_FIXES = "quick_fixes";
+    private static final String PREF_SHOW_SUGGESTIONS = "show_suggestions";
+    private static final String PREF_AUTO_COMPLETE = "auto_complete";
     private static final String PREF_SMS_7BIT = "sms_7bit";
     private static final String PREF_AUTO_FINAL_SIGMA = "auto_final_sigma";
     
+    private static final int MSG_UPDATE_SUGGESTIONS = 0;
+
     // How many continuous deletes at which to start deleting at a higher speed.
     private static final int DELETE_ACCELERATE_AT = 20;
     // Key events coming any faster than this are long-presses.
@@ -86,22 +98,42 @@ public class GreekIME extends InputMethodService
     private static final int POS_METHOD = 1;
     
     private SoftKeyboardView mInputView;
+    private CandidateViewContainer mCandidateViewContainer;
+    private CandidateView mCandidateView;
+    private Suggest mSuggest;
+    private CompletionInfo[] mCompletions;
     
     private AlertDialog mOptionsDialog;
     
     KeyboardSwitcher mKeyboardSwitcher;
     HardKeyboardState mHardKeyboard;
+
+    private UserDictionary mUserDictionary;
+
+    private String mLocale;
     
     private StringBuilder mComposing = new StringBuilder();
     private WordComposer mWord = new WordComposer();
+    private int mCommittedLength;
+    private boolean mPredicting;
+    private CharSequence mBestWord;
+    private boolean mPredictionOn;
+    private boolean mCompletionOn;
     private boolean mAutoSpace;
+    private boolean mAutoCorrectOn;
     private boolean mCapsLock;
     private boolean mVibrateOn;
     private boolean mSMS7bitMode;
     private boolean mSoundOn;
+    private boolean mQuickFixes;
+    private boolean mShowSuggestions;
+    private boolean mAutoComplete;
+    private int     mCorrectionMode;
     private boolean mAutoCap;
     private boolean mAutoFinalSigma;
     // Indicates whether the suggestion strip is to be on in landscape
+    private boolean mJustAccepted;
+    private CharSequence mJustRevertedSeparator;
     private int mDeleteCount;
     private long mLastKeyTime;
     
@@ -124,12 +156,25 @@ public class GreekIME extends InputMethodService
     private String mSentenceSeparators;
     
     private boolean mHasVisibleHardwareKeyboard;
+
+    Handler mHandler = new Handler() {
+        @Override
+        public void handleMessage(Message msg) {
+            switch (msg.what) {
+                case MSG_UPDATE_SUGGESTIONS:
+                    updateSuggestions();
+                    break;
+            }
+        }
+    };
     
     @Override public void onCreate() {
         super.onCreate();
         //setStatusIcon(R.drawable.ime_qwerty);
         mKeyboardSwitcher = new KeyboardSwitcher(this);
         mHardKeyboard = new HardKeyboardState(this);
+
+        initSuggest(getResources().getConfiguration().locale.toString());
         
         mVibrateDuration = getResources().getInteger(R.integer.vibrate_duration_ms);
         
@@ -137,40 +182,69 @@ public class GreekIME extends InputMethodService
         IntentFilter filter = new IntentFilter(AudioManager.RINGER_MODE_CHANGED_ACTION);
         registerReceiver(mReceiver, filter);
         
-        mWordSeparators = getResources().getString(R.string.word_separators);
-        mSentenceSeparators = getResources().getString(R.string.sentence_separators);
         if (TRACE) Debug.startMethodTracing("greekime");
     }    
+
+    private void initSuggest(String locale) {
+        mLocale = locale;
+        mSuggest = new Suggest(this);
+        mSuggest.setCorrectionMode(mCorrectionMode);
+        mUserDictionary = new UserDictionary(this);
+        mSuggest.setUserDictionary(mUserDictionary);
+        mWordSeparators = getResources().getString(R.string.word_separators);
+        mSentenceSeparators = getResources().getString(R.string.sentence_separators);
+    }
+
     
-    @Override public void onDestroy() {
+    @Override
+    public void onDestroy() {
+        mUserDictionary.close();
         unregisterReceiver(mReceiver);
         if (TRACE) Debug.stopMethodTracing();
         super.onDestroy();
     }
     
     @Override
-	public void onConfigurationChanged(Configuration config) {
-		super.onConfigurationChanged(config);
-		mHardKeyboard.clearAllMetaStates();
-	    mHasVisibleHardwareKeyboard = config.keyboard != Configuration.KEYBOARD_NOKEYS
-        	&& config.hardKeyboardHidden != Configuration.HARDKEYBOARDHIDDEN_YES;
+    public void onConfigurationChanged(Configuration config) {
+        super.onConfigurationChanged(config);
+
+        if (!TextUtils.equals(config.locale.toString(), mLocale)) {
+            initSuggest(config.locale.toString());
+        }
+
+        mHardKeyboard.clearAllMetaStates();
+        mHasVisibleHardwareKeyboard = config.keyboard != Configuration.KEYBOARD_NOKEYS
+            && config.hardKeyboardHidden != Configuration.HARDKEYBOARDHIDDEN_YES;
 	}
 
-	@Override
+    @Override
     public View onCreateInputView() {
+        Log.i(TAG, "onCreateInputView");
         mInputView = (SoftKeyboardView) getLayoutInflater().inflate(
                 R.layout.input, null);
         mKeyboardSwitcher.setInputView(mInputView);
         mKeyboardSwitcher.makeKeyboards();
         mInputView.setOnKeyboardActionListener(this);
         mKeyboardSwitcher.setSoftKeyboardState(KeyboardSwitcher.MODE_TEXT, KeyboardSwitcher.LANGUAGE_EN, 0);
+        if (mInputView == null)  Log.e(TAG, "Input view is null!");
         return mInputView;
     }
 
+    @Override
+    public View onCreateCandidatesView() {
+        mKeyboardSwitcher.makeKeyboards();  // XXX - check patch
+        mCandidateViewContainer = (CandidateViewContainer) getLayoutInflater().inflate(
+                R.layout.candidates, null);
+        mCandidateViewContainer.initViews();
+        mCandidateView = (CandidateView) mCandidateViewContainer.findViewById(R.id.candidates);
+        mCandidateView.setService(this);
+        setCandidatesViewShown(true);
+        return mCandidateViewContainer;
+    }
     
     @Override
-	public void onStartInput(EditorInfo attribute, boolean restarting) {
-    	showStatusIcon(mKeyboardSwitcher.getLanguageIcon());
+    public void onStartInput(EditorInfo attribute, boolean restarting) {
+        showStatusIcon(mKeyboardSwitcher.getLanguageIcon());
     	loadSettings();
     	mHardKeyboard.clearAllMetaStates();
     	mIMMode = ((attribute.inputType & EditorInfo.TYPE_MASK_CLASS) == EditorInfo.TYPE_CLASS_TEXT)
@@ -190,6 +264,9 @@ public class GreekIME extends InputMethodService
         
         TextEntryState.newSession(this);
         
+        mPredictionOn = false;
+        mCompletionOn = false;
+        mCompletions = null;
         mCapsLock = false;
         mAccentShiftState = ACCENT_STATE_NONE;
         switch (attribute.inputType & EditorInfo.TYPE_MASK_CLASS) {
@@ -207,8 +284,13 @@ public class GreekIME extends InputMethodService
                 mKeyboardSwitcher.setSoftKeyboardState(KeyboardSwitcher.MODE_TEXT,
                         KeyboardSwitcher.LANGUAGE_EN, attribute.imeOptions);
                 //startPrediction();
+                mPredictionOn = true;
                 // Make sure that passwords are not displayed in candidate view
                 int variation = attribute.inputType &  EditorInfo.TYPE_MASK_VARIATION;
+                if (variation == EditorInfo.TYPE_TEXT_VARIATION_PASSWORD ||
+                        variation == EditorInfo.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ) {
+                    mPredictionOn = false;
+                }
                 if (variation == EditorInfo.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
                         || variation == EditorInfo.TYPE_TEXT_VARIATION_PERSON_NAME) {
                     mAutoSpace = false;
@@ -216,15 +298,25 @@ public class GreekIME extends InputMethodService
                     mAutoSpace = true;
                 }
                 if (variation == EditorInfo.TYPE_TEXT_VARIATION_EMAIL_ADDRESS) {
+                    mPredictionOn = false;
                     mKeyboardSwitcher.setSoftKeyboardState(KeyboardSwitcher.MODE_EMAIL,
                     		KeyboardSwitcher.LANGUAGE_EN, attribute.imeOptions);
                 } else if (variation == EditorInfo.TYPE_TEXT_VARIATION_URI) {
+                    mPredictionOn = false;
                     mKeyboardSwitcher.setSoftKeyboardState(KeyboardSwitcher.MODE_URL,
                     		KeyboardSwitcher.LANGUAGE_EN, attribute.imeOptions);
                 } else if (variation == EditorInfo.TYPE_TEXT_VARIATION_SHORT_MESSAGE) {
                     mKeyboardSwitcher.setSoftKeyboardState(KeyboardSwitcher.MODE_IM,
                     		KeyboardSwitcher.LANGUAGE_EN, attribute.imeOptions);
+                } else if (variation == EditorInfo.TYPE_TEXT_VARIATION_FILTER) {
+                    mPredictionOn = false;
                 }
+
+                if ((attribute.inputType&EditorInfo.TYPE_TEXT_FLAG_AUTO_COMPLETE) != 0) {
+                    mPredictionOn = false;
+                    mCompletionOn = true && isFullscreenMode();
+                }
+
                 updateSoftShiftKeyState(attribute);
                 break;
             default:
@@ -235,8 +327,15 @@ public class GreekIME extends InputMethodService
         mInputView.closing();
         mComposing.setLength(0);
         mDeleteCount = 0;
+        mPredicting = false;
         setCandidatesViewShown(false);
+        if (mCandidateView != null) mCandidateView.setSuggestions(null, false, false, false);
+        loadSettings();  // XXX check patch
         mInputView.setProximityCorrectionEnabled(true);
+        if (mSuggest != null) {
+            mSuggest.setCorrectionMode(mCorrectionMode);
+        }
+        mPredictionOn = mPredictionOn && mCorrectionMode > 0;
     }
 
     @Override
@@ -250,16 +349,41 @@ public class GreekIME extends InputMethodService
     }
 
     @Override
-	public boolean onEvaluateInputViewShown() { // XXX
-    	// This is really a kludge, but it's the only place I found to clear
-    	// the hardware keyboard meta states when the editor focus is lost 
-    	// and then regained, so that the tracked meta states match
-    	// the cursor caret indicator.
-    	mHardKeyboard.clearAllMetaStates();
-		return super.onEvaluateInputViewShown();
-	}
+    public boolean onEvaluateInputViewShown() { // XXX
+        // This is really a kludge, but it's the only place I found to clear
+        // the hardware keyboard meta states when the editor focus is lost 
+        // and then regained, so that the tracked meta states match
+        // the cursor caret indicator.
+        mHardKeyboard.clearAllMetaStates();
+        return super.onEvaluateInputViewShown();
+    }
 
-	@Override
+    @Override
+    public void onUpdateSelection(int oldSelStart, int oldSelEnd,
+            int newSelStart, int newSelEnd,
+            int candidatesStart, int candidatesEnd) {
+        super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd,
+                candidatesStart, candidatesEnd);
+        // If the current selection in the text view changes, we should
+        // clear whatever candidate text we have.
+        if (mComposing.length() > 0 && mPredicting && (newSelStart != candidatesEnd
+                || newSelEnd != candidatesEnd)) {
+            mComposing.setLength(0);
+            mPredicting = false;
+            updateSuggestions();
+            TextEntryState.reset();
+            InputConnection ic = getCurrentInputConnection();
+            if (ic != null) {
+                ic.finishComposingText();
+            }
+        } else if (!mPredicting && !mJustAccepted
+                && TextEntryState.getState() == TextEntryState.STATE_ACCEPTED_DEFAULT) {
+            TextEntryState.reset();
+        }
+        mJustAccepted = false;
+    }
+
+    @Override
     public void hideWindow() {
         if (mOptionsDialog != null && mOptionsDialog.isShowing()) {
             mOptionsDialog.dismiss();
@@ -268,6 +392,35 @@ public class GreekIME extends InputMethodService
         super.hideWindow();
         TextEntryState.endSession();
     }
+
+    @Override
+    public void onDisplayCompletions(CompletionInfo[] completions) {
+        if (false) {
+            Log.i(TAG, "Received completions:");
+            for (int i=0; i<(completions != null ? completions.length : 0); i++) {
+                Log.i(TAG, "  #" + i + ": " + completions[i]);
+            }
+        }
+        if (mCompletionOn) {
+            mCompletions = completions;
+            if (completions == null) {
+                mCandidateView.setSuggestions(null, false, false, false);
+                return;
+            }
+
+            List<CharSequence> stringList = new ArrayList<CharSequence>();
+            for (int i=0; i<(completions != null ? completions.length : 0); i++) {
+                CompletionInfo ci = completions[i];
+                if (ci != null) stringList.add(ci.getText());
+            }
+            //CharSequence typedWord = mWord.getTypedWord();
+            mCandidateView.setSuggestions(stringList, true, true, true);
+            mBestWord = null;
+            setCandidatesViewShown(isCandidateStripVisible() || mCompletionOn);
+        }
+    }
+
+
 
     @Override
     public void setCandidatesViewShown(boolean shown) {
@@ -294,6 +447,11 @@ public class GreekIME extends InputMethodService
                         return true;
                     }
                 }
+                break;
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+            case KeyEvent.KEYCODE_DPAD_UP:
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
                 break;
         }
     	// SHIFT-SPACE is used to switch between Greek and English
@@ -331,6 +489,20 @@ public class GreekIME extends InputMethodService
                 break;
         }
         return super.onKeyUp(keyCode, event);
+    }
+
+    private void commitTyped(InputConnection inputConnection) {
+        if (mPredicting) {
+            mPredicting = false;
+            if (mComposing.length() > 0) {
+                if (inputConnection != null) {
+                    inputConnection.commitText(mComposing, 1);
+                }
+                mCommittedLength = mComposing.length();
+                TextEntryState.acceptedTyped(mComposing);
+            }
+            updateSuggestions();
+        }
     }
     
     private int getCursorCapsMode () {
@@ -395,6 +567,36 @@ public class GreekIME extends InputMethodService
     	}
     }
     
+    private void doubleSpace() {
+        //if (!mAutoPunctuate) return;
+        if (mCorrectionMode == Suggest.CORRECTION_NONE) return;
+        final InputConnection ic = getCurrentInputConnection();
+        if (ic == null) return;
+        CharSequence lastThree = ic.getTextBeforeCursor(3, 0);
+        if (lastThree != null && lastThree.length() == 3
+                && Character.isLetterOrDigit(lastThree.charAt(0))
+                && lastThree.charAt(1) == KEYCODE_SPACE && lastThree.charAt(2) == KEYCODE_SPACE) {
+            ic.beginBatchEdit();
+            ic.deleteSurroundingText(2, 0);
+            ic.commitText(". ", 1);
+            ic.endBatchEdit();
+            updateSoftShiftKeyState(getCurrentInputEditorInfo());
+        }
+    }
+    
+    public boolean addWordToDictionary(String word) {
+        mUserDictionary.addWord(word, 128);
+        return true;
+    }
+
+    private boolean isAlphabet(int code) {
+        if (Character.isLetter(code)) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+    
     // Implementation of KeyboardViewListener
 
     public void onKey(int primaryCode, int[] keyCodes) {
@@ -447,6 +649,8 @@ public class GreekIME extends InputMethodService
                 } else {
                     handleCharacter(primaryCode, keyCodes);
                 }
+                // Cancel the just reverted state
+                mJustRevertedSeparator = null;
         }
     }
     
@@ -454,30 +658,51 @@ public class GreekIME extends InputMethodService
         InputConnection ic = getCurrentInputConnection();
         if (ic == null) return;
         ic.beginBatchEdit();
+        if (mPredicting) {
+            commitTyped(ic);
+        }
         ic.commitText(text, 1);
         ic.endBatchEdit();
         updateSoftShiftKeyState(getCurrentInputEditorInfo());
+        mJustRevertedSeparator = null;
     }
 
     private void handleBackspace() {
         boolean deleteChar = false;
         InputConnection ic = getCurrentInputConnection();
         if (ic == null) return;
-        deleteChar = true;
+        if (mPredicting) {
+            final int length = mComposing.length();
+            if (length > 0) {
+                mComposing.delete(length - 1, length);
+                mWord.deleteLast();
+                ic.setComposingText(mComposing, 1);
+                if (mComposing.length() == 0) {
+                    mPredicting = false;
+                }
+                postUpdateSuggestions();
+            } else {
+                ic.deleteSurroundingText(1, 0);
+            }
+        } else {
+            deleteChar = true;
+        }
         updateSoftShiftKeyState(getCurrentInputEditorInfo());
         TextEntryState.backspace();
         if (TextEntryState.getState() == TextEntryState.STATE_UNDO_COMMIT) {
+            revertLastWord(deleteChar);
             return;
         } else if (deleteChar) {
-        	if (mAccentShiftState != ACCENT_STATE_NONE) {
-        		accentStateClear();
-        	} else {
-        		sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL);
-        		if (mDeleteCount > DELETE_ACCELERATE_AT) {
-        			sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL);
-        		}
-        	}
+            if (mAccentShiftState != ACCENT_STATE_NONE) {
+                accentStateClear();
+            } else {
+                sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL);
+                if (mDeleteCount > DELETE_ACCELERATE_AT) {
+                    sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL);
+                }
+            }
         }
+        mJustRevertedSeparator = null;
     }
     
     private boolean isAccentShifted () {
@@ -486,6 +711,7 @@ public class GreekIME extends InputMethodService
     }
     
     private void handleShift() {
+        Keyboard currentKeyboard = mInputView.getKeyboard();
         if (mKeyboardSwitcher.isAlphabetMode()) {
             // Alphabet keyboard
             checkToggleCapsLock();
@@ -496,15 +722,40 @@ public class GreekIME extends InputMethodService
     }
     
     private void handleCharacter(int primaryCode, int[] keyCodes) {
+        // XXX check patch
+        if (isAlphabet(primaryCode) && isPredictionOn() && !isCursorTouchingWord()) {
+            if (!mPredicting) {
+                mPredicting = true;
+                mComposing.setLength(0);
+                mWord.reset();
+            }
+        }
+
         if (mInputView.isShifted()) {
             primaryCode = Character.toUpperCase(primaryCode);
         }
         if (isAccentShifted()) {
         	primaryCode = addAccent(primaryCode, mAccentShiftState);
         }
-        sendKeyChar((char)primaryCode);
+
+        // XXX check patch
+        if (mPredicting) {
+            if (mInputView.isShifted() && mComposing.length() == 0) {
+                mWord.setCapitalized(true);
+            }
+            mComposing.append((char) primaryCode);
+            mWord.add(primaryCode, keyCodes);
+            InputConnection ic = getCurrentInputConnection();
+            if (ic != null) {
+                ic.setComposingText(mComposing, 1);
+            }
+            postUpdateSuggestions();
+        } else {
+            sendKeyChar((char)primaryCode);
+        }
+
         updateSoftShiftKeyState(getCurrentInputEditorInfo());
-        accentStateClear();
+        accentStateClear();  // XXX check patch
         measureCps();
         TextEntryState.typedCharacter((char) primaryCode, isWordSeparator(primaryCode));
     }
@@ -538,7 +789,7 @@ public class GreekIME extends InputMethodService
     	InputConnection ic = getCurrentInputConnection();
     	mAccentShiftState = ACCENT_STATE_NONE;
     	if (ic != null) {  // XXX - why should we have to check?
-    		ic.setComposingText("", 1);
+    		//ic.setComposingText("", 1);
     	}
     }
     
@@ -645,6 +896,7 @@ public class GreekIME extends InputMethodService
     }
 
     private void handleSeparator(int primaryCode) {
+        boolean pickedDefault = false;
         // Handle separator
         InputConnection ic = getCurrentInputConnection();
         if (ic != null) {
@@ -654,11 +906,35 @@ public class GreekIME extends InputMethodService
         	primaryCode = addAccent(primaryCode, mAccentShiftState);
         }
         finalizeSigma();
+
+        // XXX check patch
+        if (mPredicting) {
+            // In certain languages where single quote is a separator, it's better
+            // not to auto correct, but accept the typed word. For instance,
+            // in Italian dov' should not be expanded to dove' because the elision
+            // requires the last vowel to be removed.
+            if (mAutoCorrectOn && primaryCode != '\'' &&
+                    (mJustRevertedSeparator == null
+                            || mJustRevertedSeparator.length() == 0
+                            || mJustRevertedSeparator.charAt(0) != primaryCode)) {
+                pickDefaultSuggestion();
+                pickedDefault = true;
+            } else {
+                commitTyped(ic);
+            }
+        }
+
         sendKeyChar((char)primaryCode);
         TextEntryState.typedCharacter((char) primaryCode, true);
         if (TextEntryState.getState() == TextEntryState.STATE_PUNCTUATION_AFTER_ACCEPTED 
                 && primaryCode != KEYCODE_ENTER) {
             swapPunctuationAndSpace();
+        } else if (isPredictionOn() && primaryCode == ' ') {
+        //else if (TextEntryState.STATE_SPACE_AFTER_ACCEPTED) {
+            doubleSpace();
+        }
+        if (pickedDefault && mBestWord != null) {
+            TextEntryState.acceptedDefault(mWord.getTypedWord(), mBestWord);
         }
         updateSoftShiftKeyState(getCurrentInputEditorInfo());
         accentStateClear();
@@ -668,6 +944,7 @@ public class GreekIME extends InputMethodService
     }
     
     private void handleClose() {
+        commitTyped(getCurrentInputConnection());
         requestHideSelf(0);
         mInputView.closing();
         TextEntryState.endSession();
@@ -685,7 +962,154 @@ public class GreekIME extends InputMethodService
             ((SoftKeyboard) mInputView.getKeyboard()).setShiftLocked(mCapsLock);
         }
     }
-            
+
+    private void postUpdateSuggestions() {
+        mHandler.removeMessages(MSG_UPDATE_SUGGESTIONS);
+        mHandler.sendMessageDelayed(mHandler.obtainMessage(MSG_UPDATE_SUGGESTIONS), 100);
+    }
+
+    private boolean isPredictionOn() {
+        boolean predictionOn = mPredictionOn;
+        //if (isFullscreenMode()) predictionOn &= mPredictionLandscape;
+        return predictionOn;
+    }
+
+    private boolean isCandidateStripVisible() {
+        return isPredictionOn() && mShowSuggestions;
+    }
+
+    private void updateSuggestions() {
+        // Check if we have a suggestion engine attached.
+        if (mSuggest == null || !isPredictionOn()) {
+            return;
+        }
+
+        if (!mPredicting) {
+            mCandidateView.setSuggestions(null, false, false, false);
+            return;
+        }
+
+        List<CharSequence> stringList = mSuggest.getSuggestions(mInputView, mWord, false);
+        boolean correctionAvailable = mSuggest.hasMinimalCorrection();
+        //|| mCorrectionMode == mSuggest.CORRECTION_FULL;
+        CharSequence typedWord = mWord.getTypedWord();
+        // If we're in basic correct
+        boolean typedWordValid = mSuggest.isValidWord(typedWord);
+        if (mCorrectionMode == Suggest.CORRECTION_FULL) {
+            correctionAvailable |= typedWordValid;
+        }
+        mCandidateView.setSuggestions(stringList, false, typedWordValid, correctionAvailable);
+        if (stringList.size() > 0) {
+            if (correctionAvailable && !typedWordValid && stringList.size() > 1) {
+                mBestWord = stringList.get(1);
+            } else {
+                mBestWord = typedWord;
+            }
+        } else {
+            mBestWord = null;
+        }
+        setCandidatesViewShown(isCandidateStripVisible() || mCompletionOn);
+    }
+
+    private void pickDefaultSuggestion() {
+        // Complete any pending candidate query first
+        if (mHandler.hasMessages(MSG_UPDATE_SUGGESTIONS)) {
+            mHandler.removeMessages(MSG_UPDATE_SUGGESTIONS);
+            updateSuggestions();
+        }
+        if (mBestWord != null) {
+            TextEntryState.acceptedDefault(mWord.getTypedWord(), mBestWord);
+            mJustAccepted = true;
+            pickSuggestion(mBestWord);
+        }
+    }
+
+    public void pickSuggestionManually(int index, CharSequence suggestion) {
+        if (mCompletionOn && mCompletions != null && index >= 0
+                && index < mCompletions.length) {
+            CompletionInfo ci = mCompletions[index];
+            InputConnection ic = getCurrentInputConnection();
+            if (ic != null) {
+                ic.commitCompletion(ci);
+            }
+            mCommittedLength = suggestion.length();
+            if (mCandidateView != null) {
+                mCandidateView.clear();
+            }
+            updateSoftShiftKeyState(getCurrentInputEditorInfo());
+            return;
+        }
+        pickSuggestion(suggestion);
+        TextEntryState.acceptedSuggestion(mComposing.toString(), suggestion);
+        // Follow it with a space
+        if (mAutoSpace) {
+            sendSpace();
+        }
+        // Fool the state watcher so that a subsequent backspace will not do a revert
+        TextEntryState.typedCharacter((char) KEYCODE_SPACE, true);
+    }
+
+    private void pickSuggestion(CharSequence suggestion) {
+        if (mCapsLock) {
+            suggestion = suggestion.toString().toUpperCase();
+        } else if (preferCapitalization()
+                || (mKeyboardSwitcher.isAlphabetMode() && mInputView.isShifted())) {
+            suggestion = Character.toUpperCase(suggestion.charAt(0))
+                    + suggestion.subSequence(1, suggestion.length()).toString();
+        }
+        InputConnection ic = getCurrentInputConnection();
+        if (ic != null) {
+            ic.commitText(suggestion, 1);
+        }
+        mPredicting = false;
+        mCommittedLength = suggestion.length();
+        if (mCandidateView != null) {
+            mCandidateView.setSuggestions(null, false, false, false);
+        }
+        updateSoftShiftKeyState(getCurrentInputEditorInfo());
+    }
+
+    private boolean isCursorTouchingWord() {
+        InputConnection ic = getCurrentInputConnection();
+        if (ic == null) return false;
+        CharSequence toLeft = ic.getTextBeforeCursor(1, 0);
+        CharSequence toRight = ic.getTextAfterCursor(1, 0);
+        if (!TextUtils.isEmpty(toLeft)
+                && !isWordSeparator(toLeft.charAt(0))) {
+            return true;
+        }
+        if (!TextUtils.isEmpty(toRight)
+                && !isWordSeparator(toRight.charAt(0))) {
+            return true;
+        }
+        return false;
+    }
+
+    public void revertLastWord(boolean deleteChar) {
+        final int length = mComposing.length();
+        if (!mPredicting && length > 0) {
+            final InputConnection ic = getCurrentInputConnection();
+            mPredicting = true;
+            ic.beginBatchEdit();
+            mJustRevertedSeparator = ic.getTextBeforeCursor(1, 0);
+            if (deleteChar) ic.deleteSurroundingText(1, 0);
+            int toDelete = mCommittedLength;
+            CharSequence toTheLeft = ic.getTextBeforeCursor(mCommittedLength, 0);
+            if (toTheLeft != null && toTheLeft.length() > 0
+                    && isWordSeparator(toTheLeft.charAt(0))) {
+                toDelete--;
+            }
+            ic.deleteSurroundingText(toDelete, 0);
+            ic.setComposingText(mComposing, 1);
+            TextEntryState.backspace();
+            ic.endBatchEdit();
+            postUpdateSuggestions();
+        } else {
+            sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL);
+            mJustRevertedSeparator = null;
+        }
+    }
+
     protected String getWordSeparators() {
         return mWordSeparators;
     }
@@ -697,6 +1121,12 @@ public class GreekIME extends InputMethodService
 
     public boolean isSentenceSeparator(int code) {
         return mSentenceSeparators.contains(String.valueOf((char)code));
+    }
+
+    private void sendSpace() {
+        sendKeyChar((char)KEYCODE_SPACE);
+        updateSoftShiftKeyState(getCurrentInputEditorInfo());
+        //onKey(KEY_SPACE[0], KEY_SPACE);
     }
 
     public boolean preferCapitalization() {
@@ -814,6 +1244,14 @@ public class GreekIME extends InputMethodService
         mSMS7bitMode = sp.getBoolean(PREF_SMS_7BIT, true);
         mAutoCap = sp.getBoolean(PREF_AUTO_CAP, true);
         mAutoFinalSigma = sp.getBoolean(PREF_AUTO_FINAL_SIGMA, true);
+        mQuickFixes = sp.getBoolean(PREF_QUICK_FIXES, true);
+        // If there is no auto text data, then quickfix is forced to "on", so that the other options
+        // will continue to work
+        if (mInputView != null && AutoText.getSize(mInputView) < 1) mQuickFixes = true;
+        mShowSuggestions = sp.getBoolean(PREF_SHOW_SUGGESTIONS, true) & mQuickFixes;
+        mAutoComplete = sp.getBoolean(PREF_AUTO_COMPLETE, true) & mShowSuggestions;
+        mAutoCorrectOn = mSuggest != null && (mAutoComplete || mQuickFixes);
+        mCorrectionMode = mAutoComplete ? 2 : (mQuickFixes ? 1 : 0);
     }
 
     private void showOptionsMenu() {
@@ -834,8 +1272,8 @@ public class GreekIME extends InputMethodService
                         launchSettings();
                         break;
                     case POS_METHOD:
-                        InputMethodManager imManager = (InputMethodManager)getSystemService(INPUT_METHOD_SERVICE); 
-                    	imManager.showInputMethodPicker();
+                        InputMethodManager imManager = (InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);
+                        imManager.showInputMethodPicker();
                         break;
                 }
             }
@@ -881,7 +1319,12 @@ public class GreekIME extends InputMethodService
         p.println("  Keyboard mode = " + mKeyboardSwitcher.getKeyboardMode());
         p.println("  mCapsLock=" + mCapsLock);
         p.println("  mComposing=" + mComposing.toString());
+        p.println("  mPredictionOn=" + mPredictionOn);
+        p.println("  mCorrectionMode=" + mCorrectionMode);
+        p.println("  mPredicting=" + mPredicting);
+        p.println("  mAutoCorrectOn=" + mAutoCorrectOn);
         p.println("  mAutoSpace=" + mAutoSpace);
+        p.println("  mCompletionOn=" + mCompletionOn);
         p.println("  TextEntryState.state=" + TextEntryState.getState());
         p.println("  mSoundOn=" + mSoundOn);
         p.println("  mVibrateOn=" + mVibrateOn);

@@ -28,11 +28,11 @@
     <!-- Option to play back sound on keypress in soft keyboard -->
     <string name="sound_on_keypress">Sound on keypress</string>
     <!--  Option to restrict input only to characters available in 7bit SMS encoding -->
-	<string name="sms_7bit">7bit SMS/IM mode</string>
-	<string name="sms_7bit_summary">Restrict input to 7bit alphabet</string>
-	<!-- Option to automatically convert sigma to final sigma at end of words -->
-	<string name="auto_final_sigma">Auto-finalize sigma</string>
-	<string name="auto_final_sigma_summary">Change to final sigma at end of words</string>
+    <string name="sms_7bit">7bit SMS/IM mode</string>
+    <string name="sms_7bit_summary">Restrict input to 7bit alphabet</string>
+    <!-- Option to automatically convert sigma to final sigma at end of words -->
+    <string name="auto_final_sigma">Auto-finalize sigma</string>
+    <string name="auto_final_sigma_summary">Change to final sigma at end of words</string>
     <!-- Option to enable auto capitalization of sentences -->
     <string name="auto_cap">Auto-capitalization</string> 
     <!-- Description for auto cap -->
@@ -41,7 +41,34 @@
     <string name="auto_punctuate">Auto-punctuate</string> 
     <!-- Description for auto punctuate -->
     <string name="auto_punctuate_summary"></string>
+
+    <!-- Option to automatically correct word on hitting space -->
+    <string name="auto_correction">Word suggestions</string>
+    <!-- Description for auto_correction -->
+    <string name="auto_correction_summary">Automatically correct the previous word</string>
+
+    <!-- Option to enable text prediction -->
+    <string name="prediction">Word suggestions</string>
+    <!-- Category title for text prediction -->
+    <string name="prediction_category">Word suggestion settings</string>
+    <!-- Description for text prediction -->
+    <string name="prediction_summary">Enable auto completion while typing</string>
     
+    <!-- Option to enable quick fixes -->
+    <string name="quick_fixes">Quick fixes</string>
+    <!-- Description for quick fixes -->
+    <string name="quick_fixes_summary">Corrects commonly typed mistakes</string>
+
+    <!-- Option to enable showing suggestions -->
+    <string name="show_suggestions">Show suggestions</string>
+    <!-- Description for show suggestions -->
+    <string name="show_suggestions_summary">Display suggested words while typing</string>
+
+    <!-- Option to enable auto completion -->
+    <string name="auto_complete">Auto-complete</string>
+    <!-- Description for auto completion -->
+    <string name="auto_complete_summary">Spacebar and punctuation automatically insert highlighted word</string>
+
     <!-- Indicates that a word has been added to the dictionary -->
     <string name="added_word"><xliff:g id="word">%s</xliff:g> : Saved</string>
     <!-- Accented forms of "a" -->

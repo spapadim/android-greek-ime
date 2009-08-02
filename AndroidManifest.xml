@@ -1,6 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" 
-        package="net.bitquill.inputmethod.greek" android:versionCode="5" android:versionName="0.2.2">
+        package="net.bitquill.inputmethod.greek" android:versionCode="6" android:versionName="0.9">
     <uses-permission android:name="android.permission.VIBRATE"/>
+    <uses-permission android:name="android.permission.READ_USER_DICTIONARY" />
+    <uses-permission android:name="android.permission.WRITE_USER_DICTIONARY" />
 
     <application android:label="@string/greek_ime_name" android:icon="@drawable/icon" android:debuggable="false">
         <service android:name="GreekIME"
@@ -19,4 +21,6 @@
         </activity>    
     </application>
 <uses-sdk android:minSdkVersion="3"></uses-sdk>
+
+
 </manifest>

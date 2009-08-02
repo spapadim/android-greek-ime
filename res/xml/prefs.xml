@@ -55,4 +55,35 @@
             android:defaultValue="true"
             />
 
+    <PreferenceCategory
+            android:title="@string/prediction_category"
+            android:key="prediction_settings">
+
+        <CheckBoxPreference
+            android:key="quick_fixes"
+            android:title="@string/quick_fixes"
+            android:summary="@string/quick_fixes_summary"
+            android:persistent="true"
+            android:defaultValue="true"
+            />
+
+        <CheckBoxPreference
+            android:key="show_suggestions"
+            android:title="@string/show_suggestions"
+            android:summary="@string/show_suggestions_summary"
+            android:persistent="true"
+            android:defaultValue="true"
+            />
+
+        <CheckBoxPreference
+            android:key="auto_complete"
+            android:title="@string/auto_complete"
+            android:summary="@string/auto_complete_summary"
+            android:persistent="true"
+            android:defaultValue="true"
+            android:dependency="show_suggestions"
+            />
+
+    </PreferenceCategory>
+
 </PreferenceScreen>
