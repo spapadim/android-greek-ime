@@ -926,7 +926,6 @@ public class GreekIME extends InputMethodService
         if (primaryCode == KEYCODE_SPACE && isAccentShifted()) {  // XXX - fixme, don't hardcode space code?
         	primaryCode = addAccent(primaryCode, mAccentShiftState);
         }
-        finalizeSigma();
 
         // XXX check patch
         if (mPredicting) {
@@ -945,6 +944,7 @@ public class GreekIME extends InputMethodService
             }
         }
 
+        finalizeSigma();
         sendKeyChar((char)primaryCode);
         TextEntryState.typedCharacter((char) primaryCode, true);
         if (TextEntryState.getState() == TextEntryState.STATE_PUNCTUATION_AFTER_ACCEPTED 
