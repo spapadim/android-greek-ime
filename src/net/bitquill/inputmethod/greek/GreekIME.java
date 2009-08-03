@@ -189,7 +189,10 @@ public class GreekIME extends InputMethodService
         mLocale = locale;
         mSuggest = new Suggest(this);
         mSuggest.setCorrectionMode(mCorrectionMode);
-        mUserDictionary = new UserDictionary(this);
+        mUserDictionary = null;
+        try {
+            mUserDictionary = new UserDictionary(this);
+        } catch (Exception e) {  }
         mSuggest.setUserDictionary(mUserDictionary);
         mWordSeparators = getResources().getString(R.string.word_separators);
         mSentenceSeparators = getResources().getString(R.string.sentence_separators);
@@ -198,7 +201,9 @@ public class GreekIME extends InputMethodService
     
     @Override
     public void onDestroy() {
-        mUserDictionary.close();
+        if (mUserDictionary != null) {
+            mUserDictionary.close();
+        }
         unregisterReceiver(mReceiver);
         if (TRACE) Debug.stopMethodTracing();
         super.onDestroy();
@@ -585,8 +590,12 @@ public class GreekIME extends InputMethodService
     }
     
     public boolean addWordToDictionary(String word) {
-        mUserDictionary.addWord(word, 128);
-        return true;
+        if (mUserDictionary != null) {
+            mUserDictionary.addWord(word, 128);
+            return true;
+        } else {
+            return false;
+        }
     }
 
     private boolean isAlphabet(int code) {
