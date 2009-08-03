@@ -25,20 +25,41 @@ class trie:
     def __init__ (self):
         self.children = {}
     
-    def insert (self, key, freq):
-        if len(key) == 0:
-            return
+    def insert (self, key, freq, noExpand = False):
+        assert len(key) > 0
         head, tail = key[0], key[1:]
         # Make sure there is a child entry, whether it has a node or not
         if head not in self.children:
-            self.children[head] = [None, None]
+            # If noExpand is true, word won't be inserted
+            # if the tree needs to grow in any way
+            if noExpand:
+                return False
+            else:
+                self.children[head] = [None, None]
         if len(tail) > 0:
-            # Mak sure there is a child node
+            # Make sure there is a child node
             if self.children[head][1] is None:
-                self.children[head][1] = trie()
-            self.children[head][1].insert(tail, freq)
+                childTrie = trie()
+            else:
+                childTrie = self.children[head][1]
+            inserted = childTrie.insert(tail, freq, noExpand)
+            if inserted:
+                self.children[head][1] = childTrie
+            return inserted
         else:
             self.children[head][0] = freq
+            return True
+        
+    def prettyPrint (self, fp = sys.stdout, level = 0):
+        padStr = '  ' * level;
+        for c in sorted(self.children):
+            f, n = self.children[c]
+            if f is None:
+                print >>fp, '%s%s *' % (padStr, c)
+            else:
+                print >>fp, '%s%s %d' % (padStr, c, f)
+            if n is not None:
+                n.prettyPrint(fp, level+1)
 
     def _codeSize (self, encoding):
         assert len(self.children) > 0
@@ -114,26 +135,28 @@ def logPlus1 (x):
 
 _progress_interval = 100
 
-def loadDict (fp, thresh = 0, scale = 255, transform = identity):
-    print >>logfp, 'Using raw frequency threshold of %d' % thresh
+def loadDict (fp, t, thresh = 0, scale = 255, transform = identity, noExpand = False):
+    print >>logfp, 'Using raw frequency threshold of %d, noExpand is %s' % (thresh, str(noExpand))
     startTime = time.time()
-    t = trie()
     count = skipCount = 0
     print >>logfp, 'Loading: %6d words (%6d skipped)' % (count, skipCount),
     scaleFactor = None
     for l in fp:
         word, freq, rawFreq = l.strip().split()[0:3]
-        freq = int(freq)  # ignore
+        freq = int(freq)  # ignored
         rawFreq = int(rawFreq)
         if scaleFactor is None:
             # Assumes input is in descending frequency order
             scaleFactor = float(scale)/float(transform(rawFreq))
         freq = int(round(transform(rawFreq)*scaleFactor))
-        if freq == 0 and rawFreq > 0: 
-            freq = 1  # zero-frequency entries are never suggested
-        if rawFreq > thresh:
-            t.insert(word, int(freq))
-        else:
+        if freq == 0:
+            # zero-frequency entries are never suggested
+            # and just waste space, so bump up 
+            freq = 1
+        inserted = False
+        if rawFreq > thresh or noExpand:
+            inserted = t.insert(word, freq, noExpand)
+        if not inserted:
             skipCount += 1
         count += 1
         if count % _progress_interval == 0:
@@ -151,6 +174,8 @@ def printUsageAndExit ():
     print >>sys.stderr, 'Usage: %s [options] infile outfile' % sys.argv[0]
     print >>sys.stderr, ' -t|-thresh  Raw frequency threshold for pruning'
     print >>sys.stderr, '               (default: %d)' % _default_thresh
+    print >>sys.stderr, ' -1|-onepass Make just one pass'
+    print >>sys.stderr, ' -2|-twopass Make second pass to insert free words; default'
     print >>sys.stderr, ' --log       Logarithmic transformation'
     print >>sys.stderr, ' --sqrt      Square root transformation'
     print >>sys.stderr, ' --lin       Linear scaling (no transformation); default'
@@ -159,14 +184,19 @@ def printUsageAndExit ():
     sys.exit(0)
 
 def main (argv):
-    opts, args = getopt.getopt(sys.argv[1:], 'ht:s:', 
-                               ['help', 'thresh=', 'scale=', 'log', 'sqrt', 'lin'])
+    opts, args = getopt.getopt(sys.argv[1:], 'h12t:s:', 
+                               ['help', 'onepass', 'twopass', 'thresh=', 'scale=', 'log', 'sqrt', 'lin'])
     thresh = _default_thresh
     scale = _default_scale
     xform = _default_xform
+    twoPass = True
     for opt, arg in opts:
         if opt == '-h' or opt == '--help':
             printUsageAndExit()
+        elif opt == '-1' or opt == '--onepass':
+            twoPass = False
+        elif opt == '-2' or opt == '--twopass':
+            twoPass = True
         elif opt == '-t' or opt == '--thresh':
             thresh = int(arg)
         elif opt == '-s' or opt == '--scale':
@@ -189,9 +219,17 @@ def main (argv):
     outFilename = args[1]
     
     # Load dictionary into trie
+    print >>logfp, 'First pass (initial trie build)'
     fp = codecs.open(inFilename, 'r', 'utf8')
-    t = loadDict(fp, thresh)
+    t = loadDict(fp, trie(), thresh, scale, xform)
     fp.close()
+    
+    # Make second pass and add words that can be inserted without growing trie
+    if twoPass:
+        print >>logfp, 'Second pass (insert words without growing trie)'
+        fp = codecs.open(inFilename, 'r', 'utf8')
+        t = loadDict(fp, t, thresh, scale, xform, noExpand=True)
+        fp.close()
     
     # Dump it in binary format
     fp = open(outFilename, 'w')
